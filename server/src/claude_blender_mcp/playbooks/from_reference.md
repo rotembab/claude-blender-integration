@@ -61,13 +61,15 @@ Turn each blockout part into the real piece, part by part, comparing each with t
 - **Hard surface (armor, robots, props):**
   - Shape the plates with `mesh_edit` (extrude, inset, bevel), boolean cuts, and Bevel and Solidify modifiers. Follow `hard_surface_prop`.
   - Keep plates as separate pieces with real gaps between them, and leave the dark under-suit visible where the picture shows it.
-  - Lay plates onto the base body:
-    - trace each panel's outline off `reference_overlay` in the view that faces it;
-    - fill the outline with a quad grid;
-    - project the grid onto the body (Shrinkwrap, or a raycast along the view);
-    - add Solidify inward, then Bevel and Weighted Normal.
-    
-    Plates made this way hug the body with clean topology.
+  - Lay plates onto the base body with `armor_plate`:
+    - build the under-suit (the base mesh) about 12-15 mm inside the reference outline, so plates stand proud of it the way they do in the picture;
+    - zoom `reference_overlay` on the part and read the panel's outline in metres, in the view that faces it (a grid helps: `run_python` can draw one over the picture);
+    - pass the outline as four sides; `armor_plate` fills it with an even quad grid, lays it onto the body and adds Solidify, Bevel and Weighted Normal;
+    - give plates real thickness (10-16 mm on a human-sized suit) and a 1-2 mm gap, so panel lines read as gaps;
+    - on arms and legs pass `limb_axis` (the limb's centreline), and trace the front and back halves in the front and back views; they wrap round the limb and meet at the sides;
+    - use `fold` for facets (the crease under a pectoral plate) and `dome` for bulges.
+  - Domed pieces (shoulder pads, kneecaps, joint discs, helmets): `shell_cap`, fitted to the outline in two views.
+  - Fingers, palms, wrist cuffs and boots: `rounded_segment` chains, box-modeled and all quads.
   - Model panel lines as insets or cuts, not paint.
 - **Organic forms (muscles, cloth, faces):** sculpt on a dense copy, following `detailed_sculpt`.
 - **Hands:** model fingers with knuckle segments, matching the picture's pose.

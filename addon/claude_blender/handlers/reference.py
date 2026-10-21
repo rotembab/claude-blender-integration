@@ -359,6 +359,7 @@ def _wire_copies(objects, thickness=0.0012):
         mod = w.modifiers.new("Wire", "WIREFRAME")
         mod.thickness = thickness
         mod.use_relative_offset = False
+        mod.use_even_offset = False  # even offset spikes at the sharp angles of bevels and thin faces
         mod.offset = 1.0
         out.append(w)
     return out
