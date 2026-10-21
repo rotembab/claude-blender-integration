@@ -12,7 +12,10 @@ import bmesh
 import bpy
 import numpy as np
 
+from mathutils import Vector
+
 from . import CommandError, command
+from .look import VIEWS, view_rotation
 from .topology import voxel_remesh
 from .util import apply_modifiers, edit_bmesh, get_mesh, mesh_counts, vec
 
@@ -94,6 +97,55 @@ def sculpt_prepare(name, target_faces=200000, voxel_size=None, smooth_shading=Tr
     if smooth_shading:
         obj.data.shade_smooth()
     return result
+
+
+@command("surface_points", "sculpt")
+def surface_points(name, view=None, coords=None, points=None):
+    """Find points on a mesh's surface, to aim sculpt strokes.
+    view + coords: [[u, v], ...] in 0-1 across the object's bounding box as seen from that
+    capture_views view (u left to right, v bottom to top). Each is cast from the camera's side
+    and returns the first surface it hits. points: world positions; returns the closest surface
+    point to each. Results are world-space {co, normal, hit}."""
+    obj = get_mesh(name)
+    if (view is None) == (points is None):
+        raise CommandError("Pass either view + coords or points")
+    mw = obj.matrix_world
+    inv = mw.inverted()
+    normal_mat = inv.transposed().to_3x3()
+
+    def result(hit, loc, normal):
+        if not hit:
+            return {"hit": False, "co": None, "normal": None}
+        return {"hit": True, "co": [round(v, 5) for v in mw @ loc],
+                "normal": [round(v, 4) for v in (normal_mat @ normal).normalized()]}
+
+    out = []
+    if points is not None:
+        for p in points:
+            hit, loc, normal, _ = obj.closest_point_on_mesh(inv @ vec(p))
+            out.append(result(hit, loc, normal))
+        return {"object": obj.name, "points": out}
+    if view not in VIEWS:
+        raise CommandError(f"Unknown view {view!r}. Use: {sorted(VIEWS)}")
+    if not coords:
+        raise CommandError("coords is a list of [u, v] pairs in 0-1")
+    rot = view_rotation(view).to_matrix()
+    right, up, toward = rot @ Vector((1, 0, 0)), rot @ Vector((0, 1, 0)), rot @ Vector((0, 0, 1))
+    corners = [mw @ Vector(c) for c in obj.bound_box]
+    center = sum(corners, Vector()) / 8
+
+    def span(axis):
+        d = [(c - center).dot(axis) for c in corners]
+        return min(d), max(d)
+
+    (r0, r1), (u0, u1), (_, t1) = span(right), span(up), span(toward)
+    size = max(obj.dimensions) or 1.0
+    direction = inv.to_3x3() @ -toward
+    for u, v in coords:
+        start = center + right * (r0 + (r1 - r0) * u) + up * (u0 + (u1 - u0) * v) + toward * (t1 + size)
+        hit, loc, normal, _ = obj.ray_cast(inv @ start, direction.normalized())
+        out.append(result(hit, loc, normal))
+    return {"object": obj.name, "view": view, "points": out}
 
 
 @command("sculpt_stroke", "sculpt")

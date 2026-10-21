@@ -7,7 +7,7 @@ import tempfile
 
 import bmesh
 import bpy
-from mathutils import Vector
+from mathutils import Euler, Vector
 
 from . import CommandError, command
 
@@ -21,6 +21,17 @@ VIEWS = {
     "bottom": Vector((0, 0, -1)),
     "iso": Vector((1, -1, 0.8)).normalized(),
 }
+
+
+def view_rotation(view):
+    """Camera rotation for a named view. Its local +X is image right and +Y is image up."""
+    if view == "top":
+        # Looking down with world +Y up, so the model's front is at the bottom of the image.
+        return Euler((0, 0, 0))
+    if view == "bottom":
+        return Euler((math.pi, 0, 0))
+    # Camera looks down its -Z with local +Y up; keep world Z up.
+    return (-VIEWS[view]).to_track_quat("-Z", "Y").to_euler()
 
 
 def _get_object(name):
@@ -122,14 +133,7 @@ def capture_views(views=("front", "right", "iso"), objects=None, resolution=512,
         for view in views:
             direction = VIEWS[view]
             cam.location = center + direction * distance
-            if view == "top":
-                # Looking down with world +Y up, so the model's front is at the bottom of the image.
-                cam.rotation_euler = (0, 0, 0)
-            elif view == "bottom":
-                cam.rotation_euler = (math.pi, 0, 0)
-            else:
-                # Camera looks down its -Z with local +Y up; keep world Z up.
-                cam.rotation_euler = (-direction).to_track_quat("-Z", "Y").to_euler()
+            cam.rotation_euler = view_rotation(view)
             path = os.path.join(tmpdir, f"{view}.png")
             render.filepath = path
             bpy.ops.render.render(write_still=True)

@@ -1,0 +1,9 @@
+{
+  "name": "blender-studio",
+  "version": "0.1.0",
+  "description": "Drive a live Blender session: plan multi-stage builds (sculpts, props, game-ready rigged characters) and check every stage.",
+  "author": {"name": "rotembab"},
+  "homepage": "https://github.com/rotembab/claude-blender-integration",
+  "license": "MIT",
+  "keywords": ["blender", "3d", "sculpting", "rigging", "game-dev", "mcp"]
+}

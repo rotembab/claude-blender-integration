@@ -11,12 +11,17 @@ except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import FastMCP as _Server
     from mcp.server.fastmcp import Image
 
-from . import protocol
+from . import guide, protocol
 from . import tools_build, tools_character
 from .connection import BlenderConnection, BlenderError, BlenderUnavailable
 
 INSTRUCTIONS = """\
 Tools for building 3D content in a live Blender session.
+
+Before any build that takes more than a few steps, call get_playbook("planning"). It explains
+how to plan in stages with measurable checks, and which playbook covers the request
+(game_character, detailed_sculpt, hard_surface_prop, retopo_and_bake, rig_and_animate,
+export_to_engine, troubleshooting).
 
 Working rules:
 - Start with get_scene_state to see what exists.
@@ -25,11 +30,7 @@ Working rules:
 - After each meaningful change, look at it: capture_views for shape, mesh_report for numbers.
   Do not assume a script did what you intended.
 - Prefer dedicated tools when they exist; use run_python for everything else.
-- Units are meters; rotations in tool arguments are degrees.
-- Typical character pipeline: blockout (create_primitive, mesh_edit, modifiers) -> sculpt_prepare ->
-  sculpt_stroke -> duplicate + quad_remesh (low poly) -> uv_unwrap -> bake_maps from the sculpt ->
-  rig_template (fit_to) -> edit_bones -> bind_mesh -> pose_test -> limit_weights ->
-  procedural_cycle / keyframe -> push_to_nla -> export_model -> reimport_check.
+- Units are meters; rotations in tool arguments are degrees. Characters face -Y.
 """
 
 ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake", "materials", "rig", "animate", "export")
@@ -114,6 +115,29 @@ def rollback(checkpoint_id: int | None = None) -> str:
     """Restore the file to a checkpoint (default: the latest). Checkpoints newer than it are dropped.
     Use this instead of trying to undo a broken result by hand."""
     return _dump(_call("rollback", checkpoint_id=checkpoint_id))
+
+
+# --- guide (always on: no Blender call, nothing to filter) ---------------------
+
+
+@mcp.tool()
+def list_playbooks() -> str:
+    """Playbooks for multi-stage builds, with when to use each. Start with "planning"."""
+    return _dump(guide.index())
+
+
+@mcp.tool()
+def get_playbook(name: str) -> str:
+    """Read a playbook: the stages, tools and acceptance checks for one kind of build."""
+    return guide.read(name)
+
+
+@mcp.prompt()
+def plan_build(request: str) -> str:
+    """Plan and build something in Blender, stage by stage, checking each stage."""
+    return (f"Build this in Blender: {request}\n\n" + guide.read("planning") +
+            "\n\nNow call get_scene_state, load the playbooks this request needs with get_playbook, "
+            "write the stage plan with acceptance checks, and work through it.")
 
 
 # --- look ----------------------------------------------------------------------

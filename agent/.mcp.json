@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "blender": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/rotembab/claude-blender-integration#subdirectory=server",
+        "claude-blender-mcp"
+      ]
+    }
+  }
+}

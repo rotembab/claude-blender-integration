@@ -295,3 +295,19 @@ def test_bake_needs_uvs_and_high_for_normal(call):
     ok(call("create_primitive", kind="cube", name="NoUV"))
     assert "no UVs" in err(call("bake_maps", low="NoUV", maps=["AO"]))["message"]
     assert "needs high" in err(call("bake_maps", low="Cube", maps=["NORMAL"]))["message"]
+
+
+def test_surface_points_from_view_and_closest(call):
+    # Default cube spans -1..1. Seen from the front (camera at -Y), u runs along +X and v along +Z.
+    out = ok(call("surface_points", name="Cube", view="front", coords=[[0.5, 0.5], [0.75, 0.9], [2, 2]]))["points"]
+    assert out[0]["hit"] and abs(out[0]["co"][1] + 1) < 1e-4 and out[0]["normal"] == [0, -1, 0]
+    assert abs(out[1]["co"][0] - 0.5) < 1e-4 and abs(out[1]["co"][2] - 0.8) < 1e-4
+    assert not out[2]["hit"]
+    right = ok(call("surface_points", name="Cube", view="right", coords=[[0.75, 0.5]]))["points"][0]
+    assert abs(right["co"][0] - 1) < 1e-4 and abs(right["co"][1] - 0.5) < 1e-4  # image right is +Y from +X
+    top = ok(call("surface_points", name="Cube", view="top", coords=[[0.5, 0.75]]))["points"][0]
+    assert abs(top["co"][2] - 1) < 1e-4 and abs(top["co"][1] - 0.5) < 1e-4
+    ok(call("transform", name="Cube", location=[3, 0, 0], scale=[2, 2, 2]))
+    snap = ok(call("surface_points", name="Cube", points=[[3, 0, 5]]))["points"][0]
+    assert abs(snap["co"][2] - 2) < 1e-4 and abs(snap["co"][0] - 3) < 1e-4 and snap["normal"] == [0, 0, 1]
+    assert "either" in err(call("surface_points", name="Cube"))["message"]
