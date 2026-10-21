@@ -134,7 +134,8 @@ def test_capture_views_restores_scene(tmp_path):
     proc = subprocess.run([sys.executable, str(script), str(addon_dir)], capture_output=True, text=True, timeout=300)
     if "CAPTURE_OK" in proc.stdout:
         return
-    crashed = proc.returncode < 0 or "Fatal Python error" in proc.stderr
+    # POSIX reports a signal as a negative code; Windows reports NTSTATUS codes like 0xC0000005.
+    crashed = proc.returncode < 0 or proc.returncode >= 0xC0000000 or "Fatal Python error" in proc.stderr
     if crashed and not os.environ.get("CLAUDE_REQUIRE_RENDER"):
         pytest.skip("no GPU/EGL context for Workbench rendering here")
     pytest.fail(f"capture_views failed (rc={proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-3000:]}")
