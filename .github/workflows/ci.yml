@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    name: MCP server (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e "server[dev]"
+      - run: pytest server -q
+
+  blender:
+    name: Addon on Blender ${{ matrix.bpy }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        bpy: ["4.2.0", "latest"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Mesa EGL for headless Workbench renders
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libegl-mesa0 libgbm1 libxkbcommon0 libsm6 libxi6 libxxf86vm1 libxfixes3 libxrender1
+      - name: Install bpy
+        shell: bash
+        run: |
+          if [ "${{ matrix.bpy }}" = "latest" ]; then pip install bpy; else pip install "bpy==${{ matrix.bpy }}"; fi
+          pip install pytest -e server
+      - name: Headless Blender tests
+        shell: bash
+        # Linux has Mesa, so renders must work there; other runners have no GPU and may skip them.
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then export CLAUDE_REQUIRE_RENDER=1; fi
+          pytest tests/blender -q -rs
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python scripts/build_addon.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: claude_blender-addon
+          path: dist/*.zip
