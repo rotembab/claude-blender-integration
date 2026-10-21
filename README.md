@@ -12,12 +12,18 @@ It has three parts:
 
 ## Status
 
-Milestone 1 (foundation) is in. It includes these toolsets:
+| Toolset | Tools |
+| --- | --- |
+| core | `get_scene_state`, `run_python`, `checkpoint`, `list_checkpoints`, `rollback` |
+| look | `capture_views` (fixed-angle renders: solid, wireframe, x-ray), `get_object_details`, `mesh_report` |
+| modeling | `create_primitive`, `transform`, `apply_transforms`, `add_modifier`, `set_modifier`, `apply_modifiers`, `boolean`, `duplicate`, `delete`, `join`, `set_parent`, `mesh_edit` (extrude, inset, bevel, subdivide... on faces picked by direction, bounds or material) |
+| topology | `voxel_remesh`, `quad_remesh` (QuadriFlow), `decimate` (to a triangle budget), `cleanup`, `shade` |
+| sculpt | `sculpt_prepare`, `sculpt_stroke` (draw, clay, blob, inflate, smooth, flatten, pinch, crease, grab, with symmetry), `symmetrize`, `smooth_mesh`, `surface_noise` |
+| uv_bake | `uv_unwrap`, `uv_pack`, `uv_report` (islands, overlap, coverage, stretch), `bake_maps` (normal, AO, diffuse... from a high-poly mesh) |
 
-- **core**: `get_scene_state`, `run_python`, `checkpoint`, `list_checkpoints`, `rollback`
-- **look**: `capture_views` (front/back/left/right/top/bottom/iso renders, solid, wireframe or x-ray), `get_object_details`, `mesh_report` (tris, quads, n-gons, non-manifold, boundary and loose geometry)
+The sculpt brushes work on vertex positions with numpy instead of Blender's sculpt operators. Those operators need a 3D viewport under the mouse, so they can't be driven reliably from a script. The numpy brushes behave the same headless and in the UI.
 
-Next up: sculpt, topology, UV and bake, rig (Rigify and UniRig), animate and export toolsets. See the [architecture doc](https://claude.ai/artifact/JrknQR19bdru2ycPHy5GEe).
+Next up: materials, rig (Rigify and UniRig), animate and export toolsets. See the [architecture doc](https://claude.ai/artifact/JrknQR19bdru2ycPHy5GEe).
 
 Requires Blender 4.2 LTS or newer. Tested headless on 4.2 and 5.0.
 
