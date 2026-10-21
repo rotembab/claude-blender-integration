@@ -1,7 +1,8 @@
 """Build a rigged, animated character from a turnaround sheet in a running Blender, end to end.
 
-This is the from_reference playbook as a fixed script, for checking a setup and for seeing the
-tools work together. (Claude does the same through the MCP tools, making the choices itself.)
+A fixed-script smoke test of the pipeline (references, base mesh, bake, rig, animation, export),
+for checking a setup and seeing the tools work together. Its outline-hull model is NOT artist
+quality: the from_reference playbook has Claude model every part by hand with real textures.
 
     pip install -e server
     # In Blender: start the Claude bridge (N panel > Claude)

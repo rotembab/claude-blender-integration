@@ -23,30 +23,50 @@ If the picture is a real, identifiable person, check that the user is that perso
   - In the profile, the head row should come out at about head width.
 - If the background stays attached, raise tolerance to 0.1-0.15. If thin parts go missing, lower it.
 
-## 2. Base mesh
+## Quality bar
 
-Pick the first one that's available:
+The user judges likeness by eye, from every angle, not by numbers. Work to these rules:
 
-1. **Image-to-3D on the user's GPU.** `image_to_3d(image_path, crop=front_crop)`, then poll `image_to_3d_status(job_id, name="Base", height=...)` every 20-30 s. It gives the most detail: plates, fingers, faces.
-   - If it says no server is running, tell the user how to start one (Hunyuan3D-2 `python api_server.py --port 8081`) and continue with option 2 meanwhile.
-2. **`silhouette_mesh(name="Base")`.** Its outline matches the pictures and the cross-sections are rounded. It has no surface detail.
+- **Model it like a 3D artist.** Build by hand: blockout, then forms, then detail. Every distinct piece in the picture gets its own part: plates, joint discs, collars, boots, fingers. Don't use `image_to_3d` unless the user asks for AI generation.
+- **Detail all the time.** If you can see it in the picture, model it: panel seams, bevels and edge highlights, gaps between plates, fasteners, finger joints, and the sole and tread of boots. When in doubt, add the detail.
+- **Real textures.** Use PBR materials per region: base colour, roughness and normal, with panel lines, subtle colour variation and edge wear baked in. Never ship flat placeholder colours or colour projected from the picture.
+- **Outline match is not likeness.** `silhouette_iou` only checks the outline. A blob can score 0.96 and look nothing like the picture. Always also compare `capture_views` at `iso` (3/4) and side angles with the picture, and fix what the eye notices.
 
-Check: `compare_to_reference(view=...)` for every view. Outline match (silhouette_iou) should be at least 0.90 before refining. If an image_to_3d mesh faces the wrong way, `transform(name, rotation=[0, 0, 180])` and `apply_transforms(name)`.
+## 2. Blockout
 
-## 3. Refine against the picture
+Build the proportions from primitives: `create_primitive`, `transform`, `mesh_edit`, `add_modifier`.
 
-Work through the views in a loop: compare, fix the biggest differences, compare again.
+- Take sizes from the profile `set_reference` returns, and from `reference_to_world(view, points=[...])` on landmarks: shoulder, elbow, wrist, hip, knee, ankle, chin.
+- Start with one part per body segment. Mirror with a Mirror modifier and model only one side.
+- Check: `compare_to_reference` in every view, outline match ≥ 0.90. Then `capture_views(views=["front", "right", "iso"])` next to the picture. Fix proportions before adding any detail.
 
-- `largest_width_differences` names the heights to fix. Red in the overlay means too big, blue means missing.
-- Rebuild parts that are simple shapes as primitives. For example, cut the blob head away with `mesh_edit(..., op="delete", select={"bounds": ...})` and add a `create_primitive(kind="uv_sphere", ...)` sized from `reference_to_world(...)`.
-- Fix proportions with `sculpt_stroke(brush="grab", ...)` and add forms with clay and inflate. Aim strokes with `surface_points(...)`.
-- Hard-surface plates and seams: `sculpt_stroke(brush="crease", ...)` along the seams, or model separate plates with `hard_surface_prop` techniques.
-- Check: outline match ≥ 0.95 in each view, and nothing in the overlay that the eye notices.
+(`silhouette_mesh` gives a quick outline hull to model over or measure against. It is a guide, not the model.)
 
-## 4. Colour
+## 3. Forms and detail
 
-- Quick: `paint_from_reference(name)` on the dense mesh. It carries the picture's lighting.
-- Clean (better for stylised and hard-surface work): flat materials per region with `create_material(...)` and `assign_material(..., select=...)`.
+Turn each blockout part into the real piece, part by part, comparing each with the picture as you go.
+
+- **Hard surface (armor, robots, props):**
+  - Shape the plates with `mesh_edit` (extrude, inset, bevel), boolean cuts, and Bevel and Solidify modifiers. Follow `hard_surface_prop`.
+  - Keep plates as separate pieces with real gaps between them, and leave the dark under-suit visible where the picture shows it.
+  - Model panel lines as insets or cuts, not paint.
+- **Organic forms (muscles, cloth, faces):** sculpt on a dense copy, following `detailed_sculpt`.
+- **Hands:** model fingers with knuckle segments, matching the picture's pose.
+- Check at every part:
+  - `capture_views` close up, plus `iso`, next to the picture.
+  - Name every feature visible in the picture that the part still lacks, and keep going until there are none worth adding.
+  - The outline match should stay ≥ 0.95.
+
+## 4. Materials and textures
+
+- Make one PBR material per surface type the picture shows. For example: orange painted armor (roughness about 0.45), dark rubber or under-suit (about 0.7), glossy head (about 0.25), and metal fasteners.
+  - Use `create_material`, then `assign_material(..., select=...)` per part or face set.
+- Add texture detail:
+  - panel lines and plate gaps in the normal map, by baking from the modeled detail (`bake_maps`);
+  - subtle colour variation;
+  - edge wear on plate edges (lighter, rougher);
+  - grime in the creases (an AO bake multiplied in).
+- Check: render `capture_views(shading="material")` in `iso` and compare its colours with the picture. Hue and value should read the same at a glance.
 
 ## 5. Game mesh, UVs, bake
 
@@ -68,7 +88,8 @@ Follow `export_to_engine`. Export a preview as soon as the rig works, so the use
 
 End with a short review the user can act on. Write it from the evidence, not from memory:
 
-1. **Numbers.** Outline match per view, plus model-outside and picture-not-covered from `compare_to_reference`. Triangles, bones, clips and texture size.
+1. **Side by side from every angle.** Front, side, back and 3/4 renders next to the picture. Say honestly whether it reads as the same character at a glance. Outline numbers come second and never stand in for this.
+   Also report triangles, bones, clips and texture size.
 2. **Largest differences**, with heights and sizes (for example "upper arms 2.5 cm too wide at z = 1.1 m").
 3. **What's missing.** Name each feature you can see in the picture but not in the model: panel lines, fingers, separate pieces, accessories, true materials. Look at the side-by-side images for this.
 4. **What would improve it most, in order.** Concrete next steps with the tools that would do them, and what each would fix.

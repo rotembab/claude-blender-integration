@@ -23,7 +23,7 @@ Choosing between approaches:
 - **Dedicated tool or `run_python`?** Use the tool when one exists. It handles modes, selection and edge cases. Use `run_python` for anything the tools don't cover, with bpy.data and bmesh rather than operators.
 - **Modeling or sculpting?** Hard edges and exact dimensions mean modeling (`hard_surface_prop`). Organic forms mean a blockout, then a sculpt (`detailed_sculpt`).
 - **Game mesh?** Never ship the sculpt. Retopologize a copy and bake the detail (`retopo_and_bake`). Use quads for anything that deforms.
-- **Matching a picture?** Use `from_reference`. Set the picture up as references, start from `image_to_3d` (GPU) or `silhouette_mesh`, refine until `compare_to_reference` agrees, and finish with a review of what's missing.
+- **Matching a picture?** Use `from_reference`. Set the picture up as references. Model it by hand, the way a 3D artist would: blockout, then forms, then every visible detail, then real PBR textures. Use `image_to_3d` only if the user asks for AI generation. Judge likeness from side-by-side renders at 3/4 and side angles, not from the outline score alone. Finish with an honest review of what's missing.
 - **Which rig?** `rig_template` for game bipeds, Rigify when the user will animate in Blender, `edit_bones` for extra limbs, UniRig only when the user has it installed on an NVIDIA machine (`rig_and_animate`).
 
 ## Running each stage
