@@ -43,7 +43,7 @@ The sculpt brushes work on vertex positions with numpy instead of Blender's scul
 
 Tools alone don't make a good build. The order of steps, the numbers to aim for and the checks between steps matter as much. The agent layer supplies that:
 
-- **Playbooks**, served by the MCP server, so every client gets them: `planning`, `from_reference` (model a character from a picture, then review what's missing), `game_character`, `detailed_sculpt`, `hard_surface_prop`, `retopo_and_bake`, `rig_and_animate`, `export_to_engine` and `troubleshooting`. Each one gives stages, the tools for each stage, and acceptance checks with numbers (triangle budgets, UV overlap, unweighted verts, and so on). A test checks that every tool a playbook names exists.
+- **Playbooks**, served by the MCP server, so every client gets them: `planning`, `pro_practices` (house rules for working like a professional Blender artist), `from_reference` (model a character from a picture, then review what's missing), `game_character`, `detailed_sculpt`, `hard_surface_prop`, `retopo_and_bake`, `rig_and_animate`, `export_to_engine` and `troubleshooting`. Each one gives stages, the tools for each stage, and acceptance checks with numbers (triangle budgets, UV overlap, unweighted verts, and so on). A test checks that every tool a playbook names exists.
 - **The `blender-builder` skill**: how to plan. Pick the playbooks, write stages with measurable checks, then for each stage checkpoint, act, look, measure, and either move on, fix, or roll back.
 - **The `blender-artist` subagent** (Claude Code): runs a whole build in its own context, so the renders don't fill the main conversation, and returns a short summary.
 

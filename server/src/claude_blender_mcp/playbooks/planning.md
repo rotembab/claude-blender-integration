@@ -18,6 +18,7 @@ Ask only about things that change the result, and assume sensible defaults for t
 
 | Request | Playbooks, in order |
 | --- | --- |
+| Every build | `pro_practices`: the house rules (scale, naming, non-destructive modifiers, topology, PBR, export) |
 | Match a picture the user gives (sheet, concept, photo) | `from_reference`, which pulls in the others |
 | Character, creature or anything rigged for a game | `game_character`, which pulls in the others |
 | Detailed sculpt (bust, creature, statue, rock) | `detailed_sculpt` |

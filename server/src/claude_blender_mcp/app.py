@@ -21,7 +21,8 @@ Tools for building 3D content in a live Blender session.
 Before any build that takes more than a few steps, call get_playbook("planning"). It explains
 how to plan in stages with measurable checks, and which playbook covers the request
 (from_reference, game_character, detailed_sculpt, hard_surface_prop, retopo_and_bake,
-rig_and_animate, export_to_engine, troubleshooting). When the user gives a picture to match,
+rig_and_animate, export_to_engine, troubleshooting). Every build also follows pro_practices:
+work like a professional Blender artist (scale, naming, non-destructive modifiers, topology, PBR). When the user gives a picture to match,
 use from_reference.
 
 Working rules:

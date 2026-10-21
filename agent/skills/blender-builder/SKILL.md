@@ -11,8 +11,9 @@ You drive a running Blender through the `blender` MCP server. Your job is to dec
 
 1. `get_scene_state` to see what's already there. Build on the user's objects rather than starting over.
 2. `get_playbook("planning")` for the planning method, defaults and the map from request to playbook.
-3. Load the playbook for this kind of build with `get_playbook(name)`. `list_playbooks` shows them all. Take the stage list, the tools and the acceptance numbers from it.
-4. Settle the target: what it's for (engine and platform, render, print), the polycount budget, the style and the scale. Ask only about what changes the result. Otherwise pick the playbook's default and say so.
+3. Read `get_playbook("pro_practices")`: the house rules for working like a professional Blender artist (scale, naming, collections, non-destructive modifiers, topology, texel density, PBR, rigging, export). Every build follows them.
+4. Load the playbook for this kind of build with `get_playbook(name)`. `list_playbooks` shows them all. Take the stage list, the tools and the acceptance numbers from it.
+5. Settle the target: what it's for (engine and platform, render, print), the polycount budget, the style and the scale. Ask only about what changes the result. Otherwise pick the playbook's default and say so.
 
 ## The plan
 

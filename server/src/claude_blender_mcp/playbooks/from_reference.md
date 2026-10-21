@@ -25,7 +25,7 @@ If the picture is a real, identifiable person, check that the user is that perso
 
 ## Quality bar
 
-The user judges likeness by eye, from every angle, not by numbers. Work to these rules:
+Work to `pro_practices` throughout. On top of it, the user judges likeness by eye, from every angle, not by numbers. Work to these rules:
 
 - **Model it like a 3D artist.** Build by hand: blockout, then forms, then detail. Every distinct piece in the picture gets its own part: plates, joint discs, collars, boots, fingers. Don't use `image_to_3d` unless the user asks for AI generation.
 - **Detail all the time.** If you can see it in the picture, model it: panel seams, bevels and edge highlights, gaps between plates, fasteners, finger joints, and the sole and tread of boots. When in doubt, add the detail.
