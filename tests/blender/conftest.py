@@ -27,6 +27,33 @@ def call():
     return _call
 
 
+@pytest.fixture
+def render_child(tmp_path):
+    """Run a script that renders in a child process and pass if it prints RENDER_OK.
+
+    Rendering needs a GPU context (or Mesa EGL on Linux). Without one Blender aborts the whole
+    process, so a crash skips the test unless CI says rendering must work (CLAUDE_REQUIRE_RENDER).
+    The script gets the addon folder and this tests folder as sys.argv[1:3]."""
+    import os
+    import subprocess
+
+    def _run(code):
+        script = tmp_path / "render_child.py"
+        script.write_text("import sys\nsys.path[:0] = sys.argv[1:3]\n" + code)
+        here = pathlib.Path(__file__).resolve().parent
+        proc = subprocess.run([sys.executable, str(script), str(REPO / "addon"), str(here)],
+                              capture_output=True, text=True, timeout=600)
+        if "RENDER_OK" in proc.stdout:
+            return
+        # POSIX reports a signal as a negative code; Windows reports NTSTATUS codes like 0xC0000005.
+        crashed = proc.returncode < 0 or proc.returncode >= 0xC0000000 or "Fatal Python error" in proc.stderr
+        if crashed and not os.environ.get("CLAUDE_REQUIRE_RENDER"):
+            pytest.skip("no GPU/EGL context for Workbench rendering here")
+        pytest.fail(f"render child failed (rc={proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-3000:]}")
+
+    return _run
+
+
 _exit_status = 0
 
 
