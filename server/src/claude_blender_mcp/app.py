@@ -12,7 +12,7 @@ except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import Image
 
 from . import protocol
-from . import tools_build
+from . import tools_build, tools_character
 from .connection import BlenderConnection, BlenderError, BlenderUnavailable
 
 INSTRUCTIONS = """\
@@ -27,10 +27,12 @@ Working rules:
 - Prefer dedicated tools when they exist; use run_python for everything else.
 - Units are meters; rotations in tool arguments are degrees.
 - Typical character pipeline: blockout (create_primitive, mesh_edit, modifiers) -> sculpt_prepare ->
-  sculpt_stroke -> duplicate + quad_remesh (low poly) -> uv_unwrap -> bake_maps from the sculpt.
+  sculpt_stroke -> duplicate + quad_remesh (low poly) -> uv_unwrap -> bake_maps from the sculpt ->
+  rig_template (fit_to) -> edit_bones -> bind_mesh -> pose_test -> limit_weights ->
+  procedural_cycle / keyframe -> push_to_nla -> export_model -> reimport_check.
 """
 
-ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake")
+ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake", "materials", "rig", "animate", "export")
 
 mcp = _Server("claude-blender", instructions=INSTRUCTIONS)
 _conn = BlenderConnection(
@@ -163,3 +165,4 @@ def mesh_report(name: str, evaluated: bool = True) -> str:
 
 
 tools_build.register(tool, _call, _dump)
+tools_character.register(tool, _call, _dump, lambda data: Image(data=data, format="png"))

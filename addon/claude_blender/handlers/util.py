@@ -198,3 +198,9 @@ def edit_bmesh(obj):
 def mesh_counts(obj):
     me = obj.data
     return {"verts": len(me.vertices), "faces": len(me.polygons), "tris": sum(len(p.vertices) - 2 for p in me.polygons)}
+
+
+def use_nodes(mat):
+    """Node materials are the only kind from Blender 5.0, where the use_nodes flag is deprecated."""
+    if bpy.app.version < (5, 0, 0) or mat.node_tree is None:
+        mat.use_nodes = True

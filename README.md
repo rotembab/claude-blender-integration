@@ -20,10 +20,18 @@ It has three parts:
 | topology | `voxel_remesh`, `quad_remesh` (QuadriFlow), `decimate` (to a triangle budget), `cleanup`, `shade` |
 | sculpt | `sculpt_prepare`, `sculpt_stroke` (draw, clay, blob, inflate, smooth, flatten, pinch, crease, grab, with symmetry), `symmetrize`, `smooth_mesh`, `surface_noise` |
 | uv_bake | `uv_unwrap`, `uv_pack`, `uv_report` (islands, overlap, coverage, stretch), `bake_maps` (normal, AO, diffuse... from a high-poly mesh) |
+| materials | `create_material`, `assign_material` (whole mesh or selected faces), `set_material_texture` |
+| rig | `rig_template` (game humanoid fitted to a mesh), `edit_bones`, `rigify_metarig`, `rigify_generate`, `bind_mesh`, `rig_report`, `limit_weights`, `pose_bones`, `reset_pose`, `pose_test` (stress-pose renders), `auto_rig_unirig` + `auto_rig_status` (experimental) |
+| animate | `keyframe`, `procedural_cycle` (walk, run, idle), `list_actions`, `set_action`, `push_to_nla`, `set_frame_range`, `set_frame` |
+| export | `export_model` (FBX with Unity/Unreal/Godot presets, glTF, OBJ), `reimport_check` |
 
 The sculpt brushes work on vertex positions with numpy instead of Blender's sculpt operators. Those operators need a 3D viewport under the mouse, so they can't be driven reliably from a script. The numpy brushes behave the same headless and in the UI.
 
-Next up: materials, rig (Rigify and UniRig), animate and export toolsets. See the [architecture doc](https://claude.ai/artifact/JrknQR19bdru2ycPHy5GEe).
+### UniRig (experimental)
+
+`auto_rig_unirig` runs a local [UniRig](https://github.com/VAST-AI-Research/UniRig) checkout through its `launch/inference` scripts (skeleton, then skin, then merge) in a background thread, so Blender stays responsive. `auto_rig_status` imports the result when it's done. You need UniRig installed with its own Python environment and an NVIDIA GPU with 8 GB or more. On Windows you also need Git Bash, because UniRig's scripts are bash. This bridge hasn't been run against a real UniRig install yet. On a Mac, or as a fallback, use `rig_template` or Rigify.
+
+Next up: the agent layer (M3). It's a Claude skill with playbooks that chain these tools and check each stage. See the [architecture doc](https://claude.ai/artifact/JrknQR19bdru2ycPHy5GEe).
 
 Requires Blender 4.2 LTS or newer. Tested headless on 4.2 and 5.0.
 

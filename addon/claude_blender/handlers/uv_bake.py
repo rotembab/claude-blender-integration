@@ -9,7 +9,7 @@ import bpy
 import numpy as np
 
 from . import CommandError, command
-from .util import get_mesh, ops_context
+from .util import get_mesh, ops_context, use_nodes
 
 UNWRAP_METHODS = ("smart", "angle_based", "conformal", "cube")
 BAKE_MAPS = ("NORMAL", "AO", "DIFFUSE", "ROUGHNESS", "EMIT", "COMBINED")
@@ -185,7 +185,7 @@ def _output_dir(output_dir):
 def _ensure_materials(obj):
     if not obj.material_slots or not any(s.material for s in obj.material_slots):
         mat = bpy.data.materials.new(f"{obj.name}_Baked")
-        mat.use_nodes = True
+        use_nodes(mat)
         if obj.material_slots:
             obj.material_slots[0].material = mat
         else:
@@ -194,7 +194,7 @@ def _ensure_materials(obj):
     for s in obj.material_slots:
         if s.material is None:
             continue
-        s.material.use_nodes = True
+        use_nodes(s.material)
         mats.append(s.material)
     return mats
 
