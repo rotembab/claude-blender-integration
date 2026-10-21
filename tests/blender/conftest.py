@@ -38,9 +38,13 @@ def pytest_sessionfinish(session, exitstatus):
 def pytest_unconfigure(config):
     # The bpy 4.2 wheel can segfault in its own interpreter-exit cleanup after every test has
     # passed (seen on Linux and macOS CI). Real Blender never exits this way, so leave right
-    # after pytest has reported, with pytest's own status.
+    # after pytest has reported, with pytest's own status. Not on Windows: there os._exit still
+    # runs DLL teardown and crashes, while a normal exit is clean.
     import os
     import sys
+
+    if sys.platform == "win32":
+        return
 
     sys.stdout.flush()
     sys.stderr.flush()
