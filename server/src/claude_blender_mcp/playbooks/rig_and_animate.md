@@ -20,8 +20,8 @@
 
 ### 2. Build and fit the skeleton
 
-- `rig_template(name="Rig", fit_to=mesh)`.
-- Check with an xray `capture_views(views=["front","right"], shading="xray")`. Joints should sit inside the mesh: shoulder at the armpit's top, elbow and knee at the bend, wrist at the hand's base, hips at the crotch height.
+- `rig_template(name="Rig", fit_to=mesh, arm_angle=...)`. arm_angle is 0 for a T-pose and 40-60 for an A-pose. Poses and cycles adjust to it.
+- Check with `capture_views(objects=[mesh, "Rig"], views=["front","right"], shading="xray")`. Bones show as green shapes. Joints should sit inside the mesh: shoulder at the armpit's top, elbow and knee at the bend, wrist at the hand's base, hips at the crotch height.
 - Move joints with `edit_bones(armature, bones=[{name, head, tail}])`. Bones keep their parents. Add extra bones the same way.
 
 ### 3. Bind

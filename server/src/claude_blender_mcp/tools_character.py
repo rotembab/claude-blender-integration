@@ -38,12 +38,14 @@ def register(tool, call, dump, image):
 
     @tool("rig")
     def rig_template(name: str = "Armature", height: float = 1.8, fit_to: str | None = None,
-                     arm_span: float | None = None) -> str:
-        """Game-ready humanoid skeleton: 21 deform bones plus root, T-pose, facing -Y, Unity/Unreal
+                     arm_span: float | None = None, arm_angle: float = 0.0) -> str:
+        """Game-ready humanoid skeleton: 21 deform bones plus root, facing -Y, Unity/Unreal
         friendly names (hips, spine, chest, neck, head, shoulder/upper_arm/forearm/hand.L/R,
-        thigh/shin/foot/toe.L/R). fit_to sizes it to a mesh. Then check joint positions against
-        the mesh with capture_views (xray) and move joints with edit_bones."""
-        return dump(call("rig_template", name=name, height=height, fit_to=fit_to, arm_span=arm_span))
+        thigh/shin/foot/toe.L/R). arm_angle matches the mesh's rest pose: 0 = T-pose, 40-60 =
+        A-pose (measure it with reference_to_world). fit_to sizes it to a mesh. Then check joints
+        with capture_views(objects=[mesh, rig], shading="xray") and move them with edit_bones."""
+        return dump(call("rig_template", name=name, height=height, fit_to=fit_to, arm_span=arm_span,
+                         arm_angle=arm_angle))
 
     @tool("rig")
     def edit_bones(armature: str, bones: list[dict] | None = None, remove: list[str] | None = None) -> str:

@@ -62,34 +62,58 @@ def _fit(mesh_name):
 
 
 @command("rig_template", "rig")
-def rig_template(name="Armature", kind="humanoid", height=1.8, fit_to=None, arm_span=None):
-    """Create a simple game-ready skeleton (22 deform bones, T-pose, facing -Y).
-    fit_to: a mesh to size and place it on (height from its bounds, arm span from its width).
-    Adjust individual joints afterwards with edit_bones."""
+def rig_template(name="Armature", kind="humanoid", height=1.8, fit_to=None, arm_span=None, arm_angle=0.0):
+    """Create a simple game-ready skeleton (22 deform bones, facing -Y).
+    arm_angle: degrees the arms point down from horizontal, to match the mesh's rest pose
+    (0 = T-pose, about 45 = A-pose). fit_to: a mesh to size and place it on (height from its
+    bounds, arm reach from its width). Adjust individual joints afterwards with edit_bones."""
     if kind != "humanoid":
         raise CommandError("Only kind='humanoid' is built in; use edit_bones for other skeletons")
     origin = Vector((0, 0, 0))
     width = None
     if fit_to:
         height, origin, width = _fit(fit_to)
-    span = float(arm_span or width or height * 0.92)
-    arm_scale = (span / 2) / (0.46 * height)  # template hand tip sits at 0.46 * height
+    angle = math.radians(float(arm_angle))
+    shoulder_x = 0.09 * height  # where the arm starts, from the template
+    arm_len = (0.46 - 0.09) * height
+    span = arm_span or width
+    if span:
+        # Scale the arm (not the shoulder) so the fingertips reach half the span sideways.
+        arm_scale = max(float(span) / 2 - shoulder_x, 0.05 * height) / (arm_len * max(math.cos(angle), 0.2))
+    else:
+        arm_scale = 1.0
     arm_data = bpy.data.armatures.new(name)
     obj = link_to_scene(bpy.data.objects.new(name, arm_data))
     obj.location = origin
     obj.show_in_front = True
+
+    def place(bname, p):
+        p = Vector(p) * height
+        if not any(k in bname for k in ("arm", "hand")):
+            return p
+        side = 1 if p.x > 0 else -1
+        pivot = Vector((side * shoulder_x, 0, 0.82 * height))
+        d = (p - pivot) * arm_scale
+        # Swing the arm down by `angle` around the shoulder, in the body's side plane.
+        return pivot + Vector((d.x * math.cos(angle), d.y, d.z - abs(d.x) * math.sin(angle)))
+
     with ops_context(obj, mode="EDIT"):
         ebs = arm_data.edit_bones
         for bname, head, tail, parent in _template_bones():
             eb = ebs.new(bname)
-            sx = arm_scale if any(k in bname for k in ("arm", "hand", "shoulder")) else 1.0
-            eb.head = Vector((head[0] * sx, head[1], head[2])) * height
-            eb.tail = Vector((tail[0] * sx, tail[1], tail[2])) * height
+            eb.head = place(bname, head)
+            eb.tail = place(bname, tail)
+            if any(k in bname for k in ("arm", "hand")):
+                # Keep the T-pose roll convention (local X horizontal, +X raises the arm) when the
+                # arm points down, so poses and cycles mean the same thing on an A-pose rig.
+                side = 1 if eb.head.x > 0 else -1
+                eb.align_roll((eb.tail - eb.head).normalized().cross(Vector((0, 1, 0))) * side)
             eb.use_deform = bname != "root"
             if parent:
                 eb.parent = ebs[parent]
                 eb.use_connect = bname.split(".")[0] in CONNECTED and (eb.parent.tail - eb.head).length < 1e-4
-    return {"name": obj.name, "bones": len(arm_data.bones), "height": round(height, 4)}
+    obj["claude_arm_angle"] = float(arm_angle)  # pose_test and procedural_cycle offset arm poses by it
+    return {"name": obj.name, "bones": len(arm_data.bones), "height": round(height, 4), "arm_angle": float(arm_angle)}
 
 
 @command("edit_bones", "rig")
@@ -349,7 +373,19 @@ def pose_test(mesh, armature, poses=None, views=("front", "iso"), resolution=384
 
     arm = get_object(armature, "ARMATURE")
     get_mesh(mesh)
-    poses = poses or {k: {b: s for b, s in v.items() if b in arm.pose.bones} for k, v in TEST_POSES.items()}
+    if not poses:
+        # The defaults lower the arms from a T-pose; an A-pose rest is already part way down.
+        lower = arm.get("claude_arm_angle", 0.0)
+        poses = {}
+        for k, v in TEST_POSES.items():
+            poses[k] = {}
+            for b, spec in v.items():
+                if b not in arm.pose.bones:
+                    continue
+                rot = list(spec["rotation"])
+                if b.startswith("upper_arm") and rot[0] < 0:
+                    rot[0] = min(0.0, rot[0] + lower)
+                poses[k][b] = {**spec, "rotation": rot}
     results = []
     try:
         for pose_name, spec in poses.items():

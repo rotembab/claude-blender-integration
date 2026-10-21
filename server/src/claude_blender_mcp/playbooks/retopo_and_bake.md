@@ -18,7 +18,8 @@
 
 ### 3. UVs
 
-- Organic: `uv_unwrap(name, method="angle_based", seams_from_angle=60)`. Hard-surface: `uv_unwrap(name, method="smart")`.
+- Hard-surface, or organic without hand-marked seams: `uv_unwrap(name, method="smart", angle_limit=55)`, then `uv_pack(names=[name])`.
+- angle_based with seams_from_angle only works when the mesh has sharp edges. On a smooth character it finds no seams and makes one stretched island. Check `uv_report(...)`: islands = 1 with a texel_density_spread above about 3 means this happened.
 - Check: `uv_report(...)` shows overlap ≈ 0, faces_out_of_bounds 0 and coverage above 0.6. A texel_density_spread above about 3 means some parts get far less texture than others. Unwrap again with different seams or angle.
 
 ### 4. Pack

@@ -12,7 +12,7 @@ except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import Image
 
 from . import guide, protocol
-from . import tools_build, tools_character
+from . import tools_build, tools_character, tools_reference
 from .connection import BlenderConnection, BlenderError, BlenderUnavailable
 
 INSTRUCTIONS = """\
@@ -20,8 +20,9 @@ Tools for building 3D content in a live Blender session.
 
 Before any build that takes more than a few steps, call get_playbook("planning"). It explains
 how to plan in stages with measurable checks, and which playbook covers the request
-(game_character, detailed_sculpt, hard_surface_prop, retopo_and_bake, rig_and_animate,
-export_to_engine, troubleshooting).
+(from_reference, game_character, detailed_sculpt, hard_surface_prop, retopo_and_bake,
+rig_and_animate, export_to_engine, troubleshooting). When the user gives a picture to match,
+use from_reference.
 
 Working rules:
 - Start with get_scene_state to see what exists.
@@ -33,7 +34,8 @@ Working rules:
 - Units are meters; rotations in tool arguments are degrees. Characters face -Y.
 """
 
-ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake", "materials", "rig", "animate", "export")
+ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake", "materials", "rig", "animate", "export",
+                "reference")
 
 mcp = _Server("claude-blender", instructions=INSTRUCTIONS)
 _conn = BlenderConnection(
@@ -154,7 +156,8 @@ def capture_views(
     """Render images of the model from fixed angles so you can check proportions and shape.
     views: any of front, back, left, right, top, bottom, iso (default front, right, iso).
     objects: frame only these (default: all visible). isolate hides everything else.
-    shading: solid, wireframe (shows topology) or xray.
+    shading: solid, wireframe (shows topology) or xray. Armatures among the objects are drawn as
+    green bone shapes, so objects=[mesh, rig] with xray shows the joints inside the mesh.
     Uses Workbench, so it is fast and independent of the scene's render settings."""
     result = _call(
         "capture_views",
@@ -190,3 +193,4 @@ def mesh_report(name: str, evaluated: bool = True) -> str:
 
 tools_build.register(tool, _call, _dump)
 tools_character.register(tool, _call, _dump, lambda data: Image(data=data, format="png"))
+tools_reference.register(tool, _call, _dump, lambda data: Image(data=data, format="png"))

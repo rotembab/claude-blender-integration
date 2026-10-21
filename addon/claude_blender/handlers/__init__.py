@@ -46,4 +46,4 @@ def dispatch(request):
 
 
 # Import handler modules so they register themselves.
-from . import animate, core, export, look, materials, modeling, rig, sculpt, topology, uv_bake  # noqa: E402,F401
+from . import animate, core, export, image_to_3d, look, materials, modeling, reference, rig, sculpt, topology, uv_bake  # noqa: E402,F401

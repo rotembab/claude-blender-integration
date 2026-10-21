@@ -12,6 +12,10 @@
 | Anything else / web | `.glb` | Embedded textures and animations in one file |
 | Static mesh only | `.obj` | No rig or animation |
 
+## Preview first
+
+As soon as the mesh is rigged, export a preview (`<Name>_preview.fbx`) and hand it over. Engine problems like scale, axes, materials and missing clips show up early, while they're cheap to fix. Re-export when the model is final.
+
 ## Before export
 
 - `apply_transforms(...)` on every mesh and the armature.

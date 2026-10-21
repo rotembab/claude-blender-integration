@@ -202,6 +202,7 @@ def procedural_cycle(armature, kind="walk", frames=None, action=None, bone_map=N
         pb = arm.pose.bones[bone]
         if pb.rotation_mode != "XYZ":
             pb.rotation_mode = "XYZ"
+    rest_arm_angle = float(arm.get("claude_arm_angle", 0.0))
     hips_bone = mapped.get("hips")
     steps = max(4, int(keys_per_cycle))
     for i in range(steps + 1):
@@ -212,6 +213,9 @@ def procedural_cycle(armature, kind="walk", frames=None, action=None, bone_map=N
             bone = mapped.get(role)
             if not bone:
                 continue
+            if role.startswith("upper_arm"):
+                # Poses assume a T-pose rest; rig_template's arm_angle already lowers the arms.
+                rot = [rot[0] + rest_arm_angle, rot[1], rot[2]]
             pb = arm.pose.bones[bone]
             pb.rotation_euler = [math.radians(a) for a in rot]
             pb.keyframe_insert("rotation_euler", frame=frame, group=bone)
