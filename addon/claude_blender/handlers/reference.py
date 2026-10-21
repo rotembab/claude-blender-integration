@@ -262,8 +262,10 @@ def reference_to_world(view, points):
     return {"view": ref["view"], "points": out}
 
 
-def _render_mask(ref, objects, res_w, res_h, path):
-    """Orthographic Workbench render covering exactly the picture's area. Returns RGBA top-down."""
+def _render_mask(ref, objects, res_w, res_h, path, flat=False, wire=False):
+    """Orthographic Workbench render covering exactly the picture's area. Returns RGBA top-down.
+    flat: unlit material colours (for comparing colour regions) instead of studio shading.
+    wire: draw the evaluated mesh's real edges (quads stay quads) over grey clay."""
     scene = bpy.context.scene
     render = scene.render
     shade = scene.display.shading
@@ -274,12 +276,14 @@ def _render_mask(ref, objects, res_w, res_h, path):
         "mode": render.image_settings.color_mode, "film_transparent": render.film_transparent,
         "light": shade.light, "color_type": shade.color_type, "show_cavity": shade.show_cavity,
         "show_object_outline": shade.show_object_outline,
+        "view_transform": scene.view_settings.view_transform, "look": scene.view_settings.look,
     }
     keep = {o.name for o in objects}
     hidden = [o for o in scene.objects if o.name not in keep and not o.hide_render]
     cam_data = bpy.data.cameras.new("_claude_ref_cam")
     cam = bpy.data.objects.new("_claude_ref_cam", cam_data)
     scene.collection.objects.link(cam)
+    wires = _wire_copies(objects) if wire else []
     try:
         for o in hidden:
             o.hide_render = True
@@ -288,10 +292,17 @@ def _render_mask(ref, objects, res_w, res_h, path):
         render.image_settings.file_format = "PNG"
         render.image_settings.color_mode = "RGBA"
         render.film_transparent = True
-        shade.light = "STUDIO"
-        shade.color_type = color_type(objects)
-        shade.show_cavity = True
+        shade.light = "FLAT" if flat else "STUDIO"
+        shade.color_type = "OBJECT" if wire else color_type(objects)
+        if wire:  # clay objects, dark wire copies
+            for o in objects:
+                saved.setdefault("obj_colors", {})[o.name] = tuple(o.color)
+                o.color = (0.62, 0.62, 0.63, 1)
+        shade.show_cavity = not flat
         shade.show_object_outline = False
+        if flat:  # colours as set, so they compare with the picture's
+            scene.view_settings.view_transform = "Standard"
+            scene.view_settings.look = "None"
         left, right, z0, z1 = _frame(ref)
         direction, h_axis = VIEWS[ref["view"]]
         cam_data.type = "ORTHO"
@@ -310,6 +321,12 @@ def _render_mask(ref, objects, res_w, res_h, path):
     finally:
         for o in hidden:
             o.hide_render = False
+        for name, col in saved.get("obj_colors", {}).items():
+            bpy.data.objects[name].color = col
+        for w in wires:
+            me = w.data
+            bpy.data.objects.remove(w)
+            bpy.data.meshes.remove(me)
         bpy.data.objects.remove(cam)
         bpy.data.cameras.remove(cam_data)
         scene.camera = saved["camera"]
@@ -323,6 +340,90 @@ def _render_mask(ref, objects, res_w, res_h, path):
         shade.color_type = saved["color_type"]
         shade.show_cavity = saved["show_cavity"]
         shade.show_object_outline = saved["show_object_outline"]
+        scene.view_settings.view_transform = saved["view_transform"]
+        scene.view_settings.look = saved["look"]
+
+
+def _wire_copies(objects, thickness=0.0012):
+    """Dark wireframe shells of the evaluated meshes (after modifiers), for wire renders."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    out = []
+    for o in objects:
+        if o.type != "MESH":
+            continue
+        me = bpy.data.meshes.new_from_object(o.evaluated_get(dg))
+        w = bpy.data.objects.new("_claude_wire_" + o.name, me)
+        w.matrix_world = o.matrix_world
+        link_to_scene(w)
+        w.color = (0.03, 0.03, 0.035, 1)
+        mod = w.modifiers.new("Wire", "WIREFRAME")
+        mod.thickness = thickness
+        mod.use_relative_offset = False
+        mod.offset = 1.0
+        out.append(w)
+    return out
+
+
+@command("reference_overlay", "reference")
+def reference_overlay(view="front", objects=None, region=None, resolution=1024, wireframe=True, opacity=0.5):
+    """Look at the model over the reference picture, the way an artist checks against a reference
+    plane: three panels at exactly the picture's framing, the picture, the model (clay with its
+    real wireframe, or studio shading), and the two blended. Do this after every modeling step, in
+    every view that has a reference (front, side, back), and zoom in on details with region.
+
+    region: [left, right, bottom, top] in metres (horizontal axis of the view, and world Z) to zoom
+    into, for example [-0.35, 0.35, 1.1, 1.65] for a 1.8 m character's chest and shoulders."""
+    ref = _get_ref(_view(view))
+    if objects:
+        objs = [get_object(n) for n in objects]
+    else:
+        objs = [o for o in bpy.context.scene.objects if o.type == "MESH" and o.visible_get()]
+    if not objs:
+        raise CommandError("No visible meshes to show")
+    resolution = max(128, min(int(resolution), 4096))
+    left, right, z0, z1 = _frame(ref)
+    if region:
+        x0, x1, rz0, rz1 = (float(v) for v in region)
+        if not (x0 < x1 and rz0 < rz1):
+            raise CommandError("region is [left, right, bottom, top] with left < right and bottom < top")
+    else:
+        x0, x1, rz0, rz1 = left, right, z0, z1
+    # Render the whole picture area at a size where the region gets ~resolution pixels.
+    k = resolution / max((x1 - x0) / ref["mpp"], (rz1 - rz0) / ref["mpp"])
+    k = min(k, 4096 / max(ref["mask_w"], ref["mask_h"]))
+    w, h = max(1, round(ref["mask_w"] * k)), max(1, round(ref["mask_h"] * k))
+    tmp = tempfile.mkdtemp(prefix="claude_overlay_")
+    model = _render_mask(ref, objs, w, h, os.path.join(tmp, "model.png"), wire=bool(wireframe))
+    picture = _resize(_load_rgba(ref["path"]), h, w).copy()
+    picture[..., 3] = 1.0
+    px = ref["mpp"] * ref["mask_w"] / w  # metres per output pixel
+
+    def col(hv):
+        return int(round(ref["center_col"] * w / ref["mask_w"] + hv / px))
+
+    def row(z):
+        return int(round(ref["bottom_row"] * h / ref["mask_h"] - (z - ref["base_z"]) / px))
+
+    c0, c1 = max(0, col(x0)), min(w, col(x1))
+    r0, r1 = max(0, row(rz1)), min(h, row(rz0))
+    if c1 - c0 < 4 or r1 - r0 < 4:
+        raise CommandError("region is outside the picture")
+    pic = picture[r0:r1, c0:c1]
+    mod = model[r0:r1, c0:c1]
+    bg = np.full_like(mod, 0.3)
+    bg[..., 3] = 1
+    a = mod[..., 3:4]
+    model_panel = bg.copy()
+    model_panel[..., :3] = mod[..., :3] * a + bg[..., :3] * (1 - a)
+    o = float(opacity)
+    blend = pic.copy()
+    blend[..., :3] = pic[..., :3] * (1 - o * a) + mod[..., :3] * o * a
+    gap = np.ones((pic.shape[0], max(2, pic.shape[1] // 80), 4), np.float32)
+    out_path = os.path.join(tmp, "overlay.png")
+    _write_png(np.concatenate([pic, gap, model_panel, gap, blend], axis=1), out_path)
+    with open(out_path, "rb") as fh:
+        png = base64.b64encode(fh.read()).decode("ascii")
+    return {"view": ref["view"], "region": [x0, x1, rz0, rz1], "png_base64": png}
 
 
 def _write_png(rgba_topdown, path):
@@ -338,12 +439,18 @@ def _write_png(rgba_topdown, path):
 
 
 @command("compare_to_reference", "reference")
-def compare_to_reference(view="front", objects=None, resolution=512):
+def compare_to_reference(view="front", objects=None, resolution=512, colour_regions=3):
     """Render the model exactly over the reference picture's area and compare.
 
     Returns one PNG with three panels: the picture, the model, and an overlay where red is model
     outside the picture's outline and blue is picture the model doesn't cover. Also returns the
-    silhouette overlap (IoU, 1.0 = identical outline) and the heights where widths differ most."""
+    silhouette overlap (IoU, 1.0 = identical outline) and the heights where widths differ most.
+
+    colour_regions > 0 also scores appearance: the picture's subject is split into that many colour
+    regions (for example orange plates, dark suit, yellow head, metal), the model is rendered with
+    its flat material colours, and colour_match is the share of pixels (over both outlines) where
+    the model shows the same region as the picture (within 2 px). The outline alone is not likeness: aim for
+    both silhouette_iou and colour_match >= 0.95. A fourth panel marks mismatched pixels magenta."""
     ref = _get_ref(_view(view))
     if not os.path.isfile(ref["path"]):
         raise CommandError(f"The reference image moved or was deleted: {ref['path']}")
@@ -377,8 +484,17 @@ def compare_to_reference(view="front", objects=None, resolution=512):
     overlay[model_mask & ~ref_mask, :3] = [0.9, 0.1, 0.1]
     overlay[~model_mask & ref_mask, :3] = [0.15, 0.3, 0.95]
     gap = np.ones((h, max(2, w // 64), 4), np.float32)
+    panels = [picture, gap, model_panel, gap, overlay]
+    colour = None
+    if int(colour_regions) > 0:
+        flat = _render_mask(ref, objs, w, h, os.path.join(tmp, "flat.png"), flat=True)
+        colour, mismatch = _colour_match(picture[..., :3], ref_mask, flat[..., :3], model_mask, int(colour_regions))
+        miss = picture.copy()
+        miss[..., :3] = miss[..., :3] * 0.4 + 0.6
+        miss[mismatch, :3] = [0.95, 0.1, 0.85]
+        panels += [gap, miss]
     out_path = os.path.join(tmp, "compare.png")
-    _write_png(np.concatenate([picture, gap, model_panel, gap, overlay], axis=1), out_path)
+    _write_png(np.concatenate(panels, axis=1), out_path)
     with open(out_path, "rb") as fh:
         png = base64.b64encode(fh.read()).decode("ascii")
 
@@ -399,8 +515,90 @@ def compare_to_reference(view="front", objects=None, resolution=512):
         "model_outside_picture": round(float((model_mask & ~ref_mask).sum() / max(ref_mask.sum(), 1)), 4),
         "picture_not_covered": round(float((~model_mask & ref_mask).sum() / max(ref_mask.sum(), 1)), 4),
         "largest_width_differences": diffs[:6],
+        **(colour or {}),
         "png_base64": png,
     }
+
+
+def _features(rgb):
+    """Colour features that keep a lit or shadowed orange orange: hue and saturation on a circle
+    (s cos h, s sin h) plus half-weighted brightness."""
+    mx = rgb.max(axis=-1)
+    mn = rgb.min(axis=-1)
+    delta = mx - mn
+    sat = np.where(mx > 1e-4, delta / np.maximum(mx, 1e-4), 0.0)
+    r, g, b = rgb[..., 0], rgb[..., 1], rgb[..., 2]
+    d = np.maximum(delta, 1e-6)
+    hue = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) * (np.pi / 3)
+    return np.stack([sat * np.cos(hue), sat * np.sin(hue), 0.5 * mx], axis=-1).astype(np.float32)
+
+
+def _kmeans(pick, k, restarts=6, iters=30):
+    rng = np.random.default_rng(0)
+    best, best_cost = None, None
+    for _ in range(restarts):
+        centres = [pick[rng.integers(len(pick))]]
+        for _ in range(1, k):  # k-means++ seeding
+            d = np.min(((pick[:, None] - np.array(centres)[None]) ** 2).sum(-1), axis=1)
+            centres.append(pick[rng.choice(len(pick), p=d / d.sum())] if d.sum() > 0 else pick[0])
+        centres = np.array(centres)
+        for _ in range(iters):
+            lab = np.argmin(((pick[:, None] - centres[None]) ** 2).sum(-1), axis=1)
+            for i in range(k):
+                if (lab == i).any():
+                    centres[i] = pick[lab == i].mean(axis=0)
+        cost = float(np.min(((pick[:, None] - centres[None]) ** 2).sum(-1), axis=1).sum())
+        if best_cost is None or cost < best_cost:
+            best, best_cost = centres.copy(), cost
+    return best
+
+
+def _near(lab_a, lab_b, tol):
+    """True where lab_a matches lab_b anywhere within tol pixels (registration tolerance)."""
+    ok = lab_a == lab_b
+    h, w = lab_a.shape
+    for dy in range(-tol, tol + 1):
+        for dx in range(-tol, tol + 1):
+            if dx == dy == 0:
+                continue
+            shifted = np.full_like(lab_b, -2)
+            ys, yd = (slice(dy, h), slice(0, h - dy)) if dy >= 0 else (slice(0, h + dy), slice(-dy, h))
+            xs, xd = (slice(dx, w), slice(0, w - dx)) if dx >= 0 else (slice(0, w + dx), slice(-dx, w))
+            shifted[ys, xs] = lab_b[yd, xd]
+            ok |= lab_a == shifted
+    return ok
+
+
+def _colour_match(pic_rgb, pic_mask, model_rgb, model_mask, k, tol=2):
+    """Split the picture's subject into k colour regions (k-means) and score how often the model
+    shows the same region, within tol pixels. Background counts as a region, so outline errors count."""
+    fp = _features(pic_rgb)
+    samples = fp[pic_mask]
+    if len(samples) < k:
+        return {"colour_match": 0.0}, np.zeros(pic_mask.shape, bool)
+    rng = np.random.default_rng(0)
+    pick = samples[rng.choice(len(samples), min(len(samples), 6000), replace=False)]
+    centres = _kmeans(pick, k)
+
+    def classify(feat, mask):
+        lab = np.argmin(((feat[..., None, :] - centres) ** 2).sum(-1), axis=-1)
+        return np.where(mask, lab, -1)
+
+    pic_lab = classify(fp, pic_mask)
+    mod_lab = classify(_features(model_rgb), model_mask)
+    union = pic_mask | model_mask
+    mismatch = union & ~(_near(pic_lab, mod_lab, tol) & _near(mod_lab, pic_lab, tol))
+    score = float(1 - mismatch.sum() / max(union.sum(), 1))
+    regions = []
+    for i in range(k):
+        sel = pic_lab == i
+        if not sel.any():
+            continue
+        col = pic_rgb[sel].mean(axis=0)
+        regions.append({"colour": "#%02x%02x%02x" % tuple(int(round(c * 255)) for c in np.clip(col, 0, 1)),
+                        "picture_share": round(float(sel.sum() / max(pic_mask.sum(), 1)), 4),
+                        "model_share": round(float((mod_lab == i).sum() / max(model_mask.sum(), 1)), 4)})
+    return {"colour_match": round(score, 4), "colour_regions": regions}, mismatch
 
 
 @command("silhouette_mesh", "reference")

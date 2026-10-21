@@ -127,6 +127,16 @@ call("silhouette_mesh", name="Hull", resolution=80)
 out = call("compare_to_reference", view="front", resolution=256)
 assert out["silhouette_iou"] > 0.85, out
 assert base64.b64decode(out["png_base64"])[:4] == b"\x89PNG"
+assert 0.0 <= out["colour_match"] <= 1.0 and out["colour_regions"], {k: v for k, v in out.items() if k != "png_base64"}
+# Overlay at the picture's framing, whole and zoomed, with the wireframe; helpers are cleaned up.
+for region in (None, [-0.3, 0.3, 1.2, 1.8]):
+    ov = call("reference_overlay", view="front", region=region, resolution=200)
+    assert base64.b64decode(ov["png_base64"])[:4] == b"\x89PNG", ov
+assert not any(o.name.startswith("_claude") for o in bpy.data.objects)
+assert not any(m.name.startswith("_claude") for m in bpy.data.meshes)
+from claude_blender.handlers import dispatch as _d
+bad = _d({"id": 2, "cmd": "reference_overlay", "params": {"view": "front", "region": [1, 0, 0, 1]}})
+assert not bad["ok"], bad
 # A mesh twice too wide shows up as model outside the picture.
 bpy.data.objects["Hull"].scale = (2, 1, 1)
 wide = call("compare_to_reference", view="front", resolution=256)
