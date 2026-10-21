@@ -12,6 +12,7 @@ except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import Image
 
 from . import protocol
+from . import tools_build
 from .connection import BlenderConnection, BlenderError, BlenderUnavailable
 
 INSTRUCTIONS = """\
@@ -24,9 +25,12 @@ Working rules:
 - After each meaningful change, look at it: capture_views for shape, mesh_report for numbers.
   Do not assume a script did what you intended.
 - Prefer dedicated tools when they exist; use run_python for everything else.
+- Units are meters; rotations in tool arguments are degrees.
+- Typical character pipeline: blockout (create_primitive, mesh_edit, modifiers) -> sculpt_prepare ->
+  sculpt_stroke -> duplicate + quad_remesh (low poly) -> uv_unwrap -> bake_maps from the sculpt.
 """
 
-ALL_TOOLSETS = ("core", "look")
+ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake")
 
 mcp = _Server("claude-blender", instructions=INSTRUCTIONS)
 _conn = BlenderConnection(
@@ -156,3 +160,6 @@ def mesh_report(name: str, evaluated: bool = True) -> str:
     boundary edges, loose geometry, zero-area faces, UV layers, whether scale is applied.
     evaluated=True measures the mesh with modifiers applied (what would be exported)."""
     return _dump(_call("mesh_report", name=name, evaluated=evaluated))
+
+
+tools_build.register(tool, _call, _dump)

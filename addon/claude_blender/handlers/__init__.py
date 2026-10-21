@@ -27,6 +27,13 @@ def dispatch(request):
         return protocol.error(request_id, "UnknownCommand", f"Unknown command: {name!r}")
     params = request.get("params") or {}
     try:
+        # Bring matrices and bounds up to date with any edits made since the last command.
+        import bpy
+
+        bpy.context.view_layer.update()
+    except Exception:  # noqa: BLE001 - e.g. no view layer during file load
+        pass
+    try:
         result = entry["fn"](**params)
     except CommandError as exc:
         return protocol.error(request_id, "CommandError", str(exc))
@@ -39,4 +46,4 @@ def dispatch(request):
 
 
 # Import handler modules so they register themselves.
-from . import core, look  # noqa: E402,F401
+from . import core, look, modeling, sculpt, topology, uv_bake  # noqa: E402,F401
