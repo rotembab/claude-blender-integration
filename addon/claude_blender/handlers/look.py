@@ -41,6 +41,54 @@ def _get_object(name):
     return obj
 
 
+def color_type(objs):
+    """Workbench colour source that shows what the meshes really look like: image textures if
+    their materials have any, else colour attributes if most of the surface has one, else
+    material colours."""
+    meshes = [o for o in objs if o.type == "MESH"]
+    for o in meshes:
+        for slot in o.material_slots:
+            mat = slot.material
+            if mat and mat.node_tree and any(n.type == "TEX_IMAGE" and n.image for n in mat.node_tree.nodes):
+                return "TEXTURE"
+    painted = sum(len(o.data.polygons) for o in meshes if o.data.color_attributes.active_color)
+    if meshes and painted * 2 > sum(len(o.data.polygons) for o in meshes):
+        return "VERTEX"
+    return "MATERIAL"
+
+
+def _bone_proxy(arm):
+    """Armatures don't render, so build a temporary mesh with one octahedral bone shape per bone
+    (in the current pose) to show where the joints are."""
+    bm = bmesh.new()
+    for pb in arm.pose.bones:
+        head = arm.matrix_world @ pb.head
+        tail = arm.matrix_world @ pb.tail
+        axis = tail - head
+        length = axis.length
+        if length < 1e-6:
+            continue
+        d = axis / length
+        side = d.cross(Vector((0, 0, 1)) if abs(d.z) < 0.9 else Vector((1, 0, 0))).normalized() * length * 0.1
+        up = d.cross(side).normalized() * length * 0.1
+        mid = head + axis * 0.15
+        a = bm.verts.new(head)
+        b = bm.verts.new(tail)
+        ring = [bm.verts.new(mid + v) for v in (side, up, -side, -up)]
+        for i in range(4):
+            bm.faces.new((a, ring[i], ring[(i + 1) % 4]))
+            bm.faces.new((b, ring[(i + 1) % 4], ring[i]))
+    me = bpy.data.meshes.new("_claude_bones")
+    bm.to_mesh(me)
+    bm.free()
+    mat = bpy.data.materials.new("_claude_bones")
+    mat.diffuse_color = (0.1, 0.9, 0.3, 1.0)
+    me.materials.append(mat)
+    obj = bpy.data.objects.new("_claude_bones", me)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj
+
+
 def _targets(objects):
     if objects:
         return [_get_object(n) for n in objects]
@@ -91,6 +139,7 @@ def capture_views(views=("front", "right", "iso"), objects=None, resolution=512,
     }
     hidden = []
     wire_mods = []
+    proxies = [_bone_proxy(o) for o in targets if o.type == "ARMATURE"]
     cam_data = bpy.data.cameras.new("_claude_capture_cam")
     cam = bpy.data.objects.new("_claude_capture_cam", cam_data)
     scene.collection.objects.link(cam)
@@ -103,7 +152,7 @@ def capture_views(views=("front", "right", "iso"), objects=None, resolution=512,
         render.image_settings.file_format = "PNG"
         render.film_transparent = False
         shade.light = "STUDIO"
-        shade.color_type = "MATERIAL"
+        shade.color_type = color_type(targets)
         shade.show_cavity = True
         shade.show_object_outline = True
         shade.show_xray = shading == "xray"
@@ -117,7 +166,7 @@ def capture_views(views=("front", "right", "iso"), objects=None, resolution=512,
                 m.use_replace = True
                 m.use_even_offset = False
         if isolate and objects:
-            keep = {o.name for o in targets}
+            keep = {o.name for o in targets} | {o.name for o in proxies}
             for o in scene.objects:
                 if o.name not in keep and o is not cam and not o.hide_render:
                     o.hide_render = True
@@ -140,6 +189,12 @@ def capture_views(views=("front", "right", "iso"), objects=None, resolution=512,
             with open(path, "rb") as fh:
                 images.append({"view": view, "png_base64": base64.b64encode(fh.read()).decode("ascii")})
     finally:
+        for o in proxies:
+            mat = o.data.materials[0]
+            me = o.data
+            bpy.data.objects.remove(o)
+            bpy.data.meshes.remove(me)
+            bpy.data.materials.remove(mat)
         for o, m in wire_mods:
             o.modifiers.remove(m)
         for o in hidden:

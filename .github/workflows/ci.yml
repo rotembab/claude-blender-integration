@@ -45,15 +45,22 @@ jobs:
       - name: Headless Blender tests
         shell: bash
         # Linux has Mesa, so renders must work there; other runners have no GPU and may skip them.
+        # One process per test file: the bpy 4.2 wheel has crashed natively (glTF import/export,
+        # modifier apply) late in a single long run, after ~75 factory resets, on Windows and Linux.
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then export CLAUDE_REQUIRE_RENDER=1; fi
           set +e
-          python -X faulthandler -m pytest tests/blender -v -rs 2>&1 | tee pytest.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            # Surface the end of the log as an annotation so it is readable without opening the job.
-            tail -n 60 pytest.log | python -c "import sys; print('::error title=pytest tail::' + sys.stdin.read().replace('%', '%25').replace('\r', '').replace('\n', '%0A'))"
-          fi
+          status=0
+          for f in tests/blender/test_*.py; do
+            python -X faulthandler -m pytest "$f" -v -rs > pytest.log 2>&1
+            rc=$?
+            cat pytest.log
+            if [ "$rc" -ne 0 ]; then
+              status=1
+              # Surface the end of the log as an annotation so it is readable without opening the job.
+              tail -n 60 pytest.log | python -c "import sys; print('::error title=pytest tail ($f)::' + sys.stdin.read().replace('%', '%25').replace('\r', '').replace('\n', '%0A'))"
+            fi
+          done
           exit $status
 
   package:

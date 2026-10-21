@@ -288,7 +288,15 @@ def bake_maps(low, high=None, maps=("NORMAL",), size=1024, cage_extrusion=0.05, 
             if connect:
                 for mat, node in nodes:
                     _hook_up(mat, node, kind)
-            results.append({"map": kind, "path": path, "size": size})
+            results.append({"map": kind, "path": path, "size": size, "nodes": nodes})
+        # Leave the colour map as the active image node: viewport texture shading (and
+        # capture_views) shows the active one, and a normal map there looks like a blue model.
+        colour = next((r for r in results if r["map"] in ("DIFFUSE", "COMBINED", "EMIT")), None)
+        if colour:
+            for mat, node in colour["nodes"]:
+                mat.node_tree.nodes.active = node
+        for r in results:
+            del r["nodes"]
     finally:
         scene.render.engine = saved["engine"]
         scene.cycles.samples = saved["samples"]
