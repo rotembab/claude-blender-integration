@@ -100,8 +100,7 @@ def test_missing_object_is_command_error(call):
 
 
 CAPTURE_SCRIPT = r"""
-import base64, sys
-sys.path.insert(0, sys.argv[1])
+import base64
 import bpy
 from claude_blender.handlers import dispatch
 
@@ -116,29 +115,12 @@ assert base64.b64decode(out["images"][0]["png_base64"])[:8] == b"\x89PNG\r\n\x1a
 after = (scene.render.engine, scene.camera.name, scene.render.resolution_x, len(bpy.data.objects))
 assert after == before, (before, after)
 assert not any(m.name == "_claude_wire" for m in bpy.data.objects["Cube"].modifiers)
-print("CAPTURE_OK")
+print("RENDER_OK", flush=True)
 """
 
 
-def test_capture_views_restores_scene(tmp_path):
-    # Rendering needs a GPU context (or Mesa EGL on Linux). Without one Blender aborts the whole
-    # process, so run it in a child process and skip unless CI says rendering must work.
-    import os
-    import pathlib
-    import subprocess
-    import sys
-
-    script = tmp_path / "capture.py"
-    script.write_text(CAPTURE_SCRIPT)
-    addon_dir = pathlib.Path(__file__).resolve().parents[2] / "addon"
-    proc = subprocess.run([sys.executable, str(script), str(addon_dir)], capture_output=True, text=True, timeout=300)
-    if "CAPTURE_OK" in proc.stdout:
-        return
-    # POSIX reports a signal as a negative code; Windows reports NTSTATUS codes like 0xC0000005.
-    crashed = proc.returncode < 0 or proc.returncode >= 0xC0000000 or "Fatal Python error" in proc.stderr
-    if crashed and not os.environ.get("CLAUDE_REQUIRE_RENDER"):
-        pytest.skip("no GPU/EGL context for Workbench rendering here")
-    pytest.fail(f"capture_views failed (rc={proc.returncode}):\n{proc.stdout[-2000:]}\n{proc.stderr[-3000:]}")
+def test_capture_views_restores_scene(render_child):
+    render_child(CAPTURE_SCRIPT)
 
 
 def test_socket_bridge_end_to_end():

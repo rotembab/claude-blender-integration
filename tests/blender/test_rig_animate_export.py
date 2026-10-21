@@ -129,15 +129,26 @@ def test_pose_moves_mesh_and_reset(call):
     assert tuple(bpy.data.objects[rig].pose.bones["upper_arm.L"].rotation_euler) == (0, 0, 0)
 
 
-def test_pose_test_renders_and_resets(call):
-    body, rig = _character(call)
-    ok(call("bind_mesh", mesh=body, armature=rig))
-    resp = call("pose_test", mesh=body, armature=rig, views=["front"], resolution=64)
-    if not resp["ok"] and "GPU" in str(resp["error"]):
-        pytest.skip("no GPU")
-    out = ok(resp)
-    assert [p["pose"] for p in out["poses"]] == ["arms_down_knee_up", "twist_and_reach"]
-    assert all(tuple(pb.rotation_euler) == (0, 0, 0) for pb in bpy.data.objects[rig].pose.bones)
+POSE_TEST_SCRIPT = r"""
+import bpy
+from claude_blender.handlers import dispatch
+from test_rig_animate_export import _character
+
+def call(cmd, **params):
+    return dispatch({"id": 1, "cmd": cmd, "params": params})
+
+body, rig = _character(call)
+assert call("bind_mesh", mesh=body, armature=rig)["ok"]
+resp = call("pose_test", mesh=body, armature=rig, views=["front"], resolution=64)
+assert resp["ok"], resp
+assert [p["pose"] for p in resp["result"]["poses"]] == ["arms_down_knee_up", "twist_and_reach"]
+assert all(tuple(pb.rotation_euler) == (0, 0, 0) for pb in bpy.data.objects[rig].pose.bones)
+print("RENDER_OK", flush=True)
+"""
+
+
+def test_pose_test_renders_and_resets(render_child):
+    render_child(POSE_TEST_SCRIPT)
 
 
 def test_rigify_metarig_and_generate(call):
