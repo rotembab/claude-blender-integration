@@ -8,17 +8,18 @@ It has three parts:
 | --- | --- | --- |
 | Blender addon | `addon/claude_blender` | Local socket server inside Blender. Runs every command on Blender's main thread. |
 | MCP server | `server/` | Exposes the addon as MCP tools, grouped into toolsets. |
-| Agent layer | `agent/` (coming in M3) | Claude skill with playbooks that plan multi-stage builds and check each stage. |
+| Agent layer | `agent/` and `server/src/claude_blender_mcp/playbooks/` | A planning skill, a Blender artist subagent and playbooks that plan multi-stage builds and check each stage. |
 
 ## Status
 
 | Toolset | Tools |
 | --- | --- |
+| guide | `list_playbooks`, `get_playbook`, and the `plan_build` prompt. Always on, even with a toolset filter |
 | core | `get_scene_state`, `run_python`, `checkpoint`, `list_checkpoints`, `rollback` |
 | look | `capture_views` (fixed-angle renders: solid, wireframe, x-ray), `get_object_details`, `mesh_report` |
 | modeling | `create_primitive`, `transform`, `apply_transforms`, `add_modifier`, `set_modifier`, `apply_modifiers`, `boolean`, `duplicate`, `delete`, `join`, `set_parent`, `mesh_edit` (extrude, inset, bevel, subdivide... on faces picked by direction, bounds or material) |
 | topology | `voxel_remesh`, `quad_remesh` (QuadriFlow), `decimate` (to a triangle budget), `cleanup`, `shade` |
-| sculpt | `sculpt_prepare`, `sculpt_stroke` (draw, clay, blob, inflate, smooth, flatten, pinch, crease, grab, with symmetry), `symmetrize`, `smooth_mesh`, `surface_noise` |
+| sculpt | `sculpt_prepare`, `surface_points` (find where to aim strokes, from a view or by snapping), `sculpt_stroke` (draw, clay, blob, inflate, smooth, flatten, pinch, crease, grab, with symmetry), `symmetrize`, `smooth_mesh`, `surface_noise` |
 | uv_bake | `uv_unwrap`, `uv_pack`, `uv_report` (islands, overlap, coverage, stretch), `bake_maps` (normal, AO, diffuse... from a high-poly mesh) |
 | materials | `create_material`, `assign_material` (whole mesh or selected faces), `set_material_texture` |
 | rig | `rig_template` (game humanoid fitted to a mesh), `edit_bones`, `rigify_metarig`, `rigify_generate`, `bind_mesh`, `rig_report`, `limit_weights`, `pose_bones`, `reset_pose`, `pose_test` (stress-pose renders), `auto_rig_unirig` + `auto_rig_status` (experimental) |
@@ -31,7 +32,15 @@ The sculpt brushes work on vertex positions with numpy instead of Blender's scul
 
 `auto_rig_unirig` runs a local [UniRig](https://github.com/VAST-AI-Research/UniRig) checkout through its `launch/inference` scripts (skeleton, then skin, then merge) in a background thread, so Blender stays responsive. `auto_rig_status` imports the result when it's done. You need UniRig installed with its own Python environment and an NVIDIA GPU with 8 GB or more. On Windows you also need Git Bash, because UniRig's scripts are bash. This bridge hasn't been run against a real UniRig install yet. On a Mac, or as a fallback, use `rig_template` or Rigify.
 
-Next up: the agent layer (M3). It's a Claude skill with playbooks that chain these tools and check each stage. See the [architecture doc](https://claude.ai/artifact/JrknQR19bdru2ycPHy5GEe).
+### Agent layer
+
+Tools alone don't make a good build. The order of steps, the numbers to aim for and the checks between steps matter as much. The agent layer supplies that:
+
+- **Playbooks**, served by the MCP server, so every client gets them: `planning`, `game_character`, `detailed_sculpt`, `hard_surface_prop`, `retopo_and_bake`, `rig_and_animate`, `export_to_engine` and `troubleshooting`. Each one gives stages, the tools for each stage, and acceptance checks with numbers (triangle budgets, UV overlap, unweighted verts, and so on). A test checks that every tool a playbook names exists.
+- **The `blender-builder` skill**: how to plan. Pick the playbooks, write stages with measurable checks, then for each stage checkpoint, act, look, measure, and either move on, fix, or roll back.
+- **The `blender-artist` subagent** (Claude Code): runs a whole build in its own context, so the renders don't fill the main conversation, and returns a short summary.
+
+See the [architecture doc](https://claude.ai/artifact/JrknQR19bdru2ycPHy5GEe).
 
 Requires Blender 4.2 LTS or newer. Tested headless on 4.2 and 5.0.
 
@@ -77,6 +86,21 @@ You need [uv](https://docs.astral.sh/uv/getting-started/installation/).
 ```
 claude mcp add blender -- uvx --from "git+https://github.com/rotembab/claude-blender-integration#subdirectory=server" claude-blender-mcp
 ```
+
+### 3. Agent layer (optional, recommended)
+
+**Claude Code.** Install the plugin. It includes the MCP server config, so you can skip the `claude mcp add` step above:
+
+```
+/plugin marketplace add rotembab/claude-blender-integration
+/plugin install blender-studio@claude-blender-integration
+```
+
+**Claude Desktop or claude.ai.** Download `blender-builder-skill.zip` from the latest CI run's artifacts, or build it with `python scripts/build_skill.py`. Then upload it under **Settings > Capabilities > Skills**.
+
+Without the skill, the server still tells Claude to read the planning playbook, and Claude Desktop lists the `plan_build` prompt in its prompt menu.
+
+### Environment variables
 
 Optional environment variables:
 

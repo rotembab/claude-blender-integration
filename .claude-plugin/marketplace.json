@@ -1,0 +1,14 @@
+{
+  "name": "claude-blender-integration",
+  "description": "Claude + Blender: an MCP bridge to a live Blender session with planning playbooks.",
+  "owner": {
+    "name": "rotembab"
+  },
+  "plugins": [
+    {
+      "name": "blender-studio",
+      "source": "./agent",
+      "description": "Blender MCP server, a planning skill and a Blender artist subagent for building 3D content with Claude."
+    }
+  ]
+}

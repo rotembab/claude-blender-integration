@@ -147,13 +147,23 @@ def register(tool, call, dump):
         return dump(call("sculpt_prepare", timeout=600, name=name, target_faces=target_faces, voxel_size=voxel_size))
 
     @tool("sculpt")
+    def surface_points(name: str, view: Literal["front", "back", "left", "right", "top", "bottom"] | None = None,
+                       coords: list[list[float]] | None = None, points: list[Vec3] | None = None) -> str:
+        """Find surface positions to aim sculpt_stroke at. view + coords: [[u, v], ...] in 0-1 across
+        the object's bounding box as seen in that capture_views view (u left to right, v bottom to
+        top); each returns the first surface hit from that side, so [[0.5, 0.8]] on "front" is the
+        front surface near the top center. points: world positions snapped to the closest surface.
+        Returns world-space co and normal per point; hit is false where a ray missed."""
+        return dump(call("surface_points", name=name, view=view, coords=coords, points=points))
+
+    @tool("sculpt")
     def sculpt_stroke(name: str,
                       brush: Literal["draw", "clay", "blob", "inflate", "smooth", "flatten", "pinch", "crease", "grab"],
                       points: list[Vec3], radius: float, strength: float = 0.5, symmetry: str = "X",
                       falloff: Literal["smooth", "sphere", "sharp", "linear", "constant"] = "smooth",
                       invert: bool = False, spacing: float = 0.25, delta: Vec3 | None = None) -> str:
-        """Brush along a path of world-space points ON or near the surface (get positions from
-        get_object_details/mesh bounds or capture_views). Dabs are placed every radius*spacing.
+        """Brush along a path of world-space points ON or near the surface (get them from
+        surface_points). Dabs are placed every radius*spacing.
         draw/blob raise (invert carves), clay builds flat layers, inflate swells, smooth relaxes,
         flatten levels, pinch tightens toward the path, crease cuts a sharp groove,
         grab moves the area at points[0] by delta. symmetry mirrors in local X/Y/Z ("" for none).
