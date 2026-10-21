@@ -47,7 +47,14 @@ jobs:
         # Linux has Mesa, so renders must work there; other runners have no GPU and may skip them.
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then export CLAUDE_REQUIRE_RENDER=1; fi
-          pytest tests/blender -q -rs
+          set +e
+          python -X faulthandler -m pytest tests/blender -v -rs 2>&1 | tee pytest.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # Surface the end of the log as an annotation so it is readable without opening the job.
+            tail -n 60 pytest.log | python -c "import sys; print('::error title=pytest tail::' + sys.stdin.read().replace('%', '%25').replace('\r', '').replace('\n', '%0A'))"
+          fi
+          exit $status
 
   package:
     runs-on: ubuntu-latest
