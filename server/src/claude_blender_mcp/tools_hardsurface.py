@@ -4,7 +4,7 @@ from typing import Literal
 
 Vec3 = list[float]
 Polyline = list[list[float]]
-PlateView = Literal["front", "back", "right", "left", "top"]
+PlateView = Literal["front", "back", "right", "left", "top", "limb"]
 
 
 def register(tool, call, dump):
@@ -14,6 +14,7 @@ def register(tool, call, dump):
                     density: float = 0.007, lift: float = 0.0, dome: float = 0.0, fold: list | None = None,
                     bevel: float = 0.003, mirror: bool = True, limb_axis: list[Vec3] | None = None,
                     limb_forward: Vec3 = (0, -1, 0), limb_lateral: Vec3 = (1, 0, 0), relax: int = 8,
+                    fair: int = 0, seam_range: list[float] | None = None, seam_sides: list[str] | None = None,
                     material: str | None = None, collection: str | None = None) -> str:
         """Trace an armor plate off a reference view and lay it onto the body (the under-suit) as
         an even quad grid with Solidify, Bevel and Weighted Normal. Outline = four polylines of
@@ -22,12 +23,17 @@ def register(tool, call, dump):
         top: a = x, b = y. Read the coordinates off a reference_overlay zoom with a grid. The
         plate's outer face sits `inset` outside the body: build the suit that far inside the
         reference outline. On an arm or leg pass limb_axis (centreline points, shoulder to wrist)
-        so the plate wraps the limb and front/back plates meet cleanly. fold = [[a0, b0], [a1, b1],
+        so the plate wraps the limb (theta 0 = limb_forward, +90 = limb_lateral); for a front/back
+        pair add seam_range (front [-90, 90], back [-270, -90]) and seam_sides ["left", "right"] so
+        they meet on one side seam with no overlap. view "limb" takes the outline straight in
+        (theta, t) round limb_axis, for parts no single view draws (a strap over a foot, a counter
+        round a heel). fair (10-30) irons out creases from the body under the plate. fold = [[a0, b0], [a1, b1],
         slope] sinks the part right of the line (a facet). mirror: model +X, Mirror makes the other side."""
         return dump(call("armor_plate", timeout=300, name=name, body=body, view=view, bottom=bottom, right=right,
                          top=top, left=left, inset=inset, thickness=thickness, gap=gap, density=density, lift=lift,
                          dome=dome, fold=fold, bevel=bevel, mirror=mirror, limb_axis=limb_axis,
-                         limb_forward=limb_forward, limb_lateral=limb_lateral, relax=relax, material=material,
+                         limb_forward=limb_forward, limb_lateral=limb_lateral, relax=relax, fair=fair,
+                         seam_range=seam_range, seam_sides=seam_sides, material=material,
                          collection=collection))
 
     @tool("hardsurface")

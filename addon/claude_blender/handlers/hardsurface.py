@@ -164,6 +164,78 @@ def _wrap_outline(env, axis, view, sides):
     return bottom, right, top, left
 
 
+def _seam(sides, seam_range, seam_sides, snap=15.0):
+    """Keep a wrapped outline inside its share of the limb, seam_range = [lo, hi] degrees (e.g.
+    front -90..90, back -270..-90), so a front/back pair never overlaps. Sides in seam_sides
+    ("left"/"right") run exactly along the nearer seam, top and bottom stretched out to them."""
+    lo, hi = map(float, seam_range)
+    allth = np.array([p[0] for sd in sides for p in sd])
+    shift = 360.0 * np.round(((lo + hi) / 2 - np.median(allth)) / 360.0)
+
+    def ease(th):
+        th = min(max(th + shift, lo), hi)
+        if hi - th < snap:  # sides that stop just short of a seam ease onto it (C1 blend)
+            th = hi - (hi - th) ** 2 / snap
+        elif th - lo < snap:
+            th = lo + (th - lo) ** 2 / snap
+        return th
+    bottom, right, top, left = ([(ease(a), b) for a, b in sd] for sd in sides)
+    for key in seam_sides:
+        sd = right if key == "right" else left
+        med = float(np.median([p[0] for p in sd]))
+        lim = lo if abs(med - lo) < abs(med - hi) else hi
+        sd[:] = [(lim, b) for a, b in sd]
+    for sd, a, b in ((bottom, left[0], right[0]), (top, left[-1], right[-1])):
+        o0, o1 = sd[0][0], sd[-1][0]
+        span = (o1 - o0) or 1e-9
+        sd[:] = [(a[0] + (p[0] - o0) * (b[0] - a[0]) / span, p[1]) for p in sd]
+        sd[0], sd[-1] = a, b
+    return bottom, right, top, left
+
+
+def _untangle(S, rounds=30):
+    """Quads folded against their neighbours (an outline corner doubling back where it grazes the
+    limb): move their verts to the average of their grid neighbours until none fold."""
+    S = S.copy()
+    nv, nu = S.shape[0] - 1, S.shape[1] - 1
+    for _ in range(rounds):
+        N = np.cross(S[1:, 1:] - S[:-1, :-1], S[:-1, 1:] - S[1:, :-1])
+        N /= np.maximum(np.linalg.norm(N, axis=2, keepdims=True), 1e-12)
+        pad = np.pad(N, ((2, 2), (2, 2), (0, 0)), mode="edge")
+        blur = sum(pad[a:a + nv, b:b + nu] for a in range(5) for b in range(5))
+        blur /= np.maximum(np.linalg.norm(blur, axis=2, keepdims=True), 1e-12)
+        bad = (N * blur).sum(2) < 0.5
+        if not bad.any():
+            break
+        move = np.zeros(S.shape[:2], bool)
+        for i, j in zip(*np.nonzero(bad)):
+            move[i:i + 2, j:j + 2] = True
+        T = S.copy()
+        for i, j in zip(*np.nonzero(move)):
+            nb = [S[a, b] for a, b in ((i - 1, j), (i + 1, j), (i, j - 1), (i, j + 1)) if 0 <= a <= nv and 0 <= b <= nu]
+            T[i, j] = np.mean(nb, axis=0)
+        S = T
+    return S
+
+
+def _fair(S, iterations, lam=0.5, mu=-0.53):
+    """Taubin smoothing of the projected grid: irons out creases the body had under the plate (a
+    knee fold, a kink in the limb axis) without shrinking it. The border slides along itself."""
+    S = S.copy()
+
+    def step(S, k):
+        A = S.copy()
+        A[1:-1, 1:-1] = (S[:-2, 1:-1] + S[2:, 1:-1] + S[1:-1, :-2] + S[1:-1, 2:]) / 4
+        A[0, 1:-1] = (S[0, :-2] + S[0, 2:]) / 2
+        A[-1, 1:-1] = (S[-1, :-2] + S[-1, 2:]) / 2
+        A[1:-1, 0] = (S[:-2, 0] + S[2:, 0]) / 2
+        A[1:-1, -1] = (S[:-2, -1] + S[2:, -1]) / 2
+        return S + k * (A - S)
+    for _ in range(int(iterations)):
+        S = step(step(S, lam), mu)
+    return S
+
+
 def _material(name, color=None):
     if not name:
         return None
@@ -228,7 +300,8 @@ def _orient_out(obj, centre_fn):
 @command("armor_plate", "hardsurface")
 def armor_plate(name, body, view, bottom, right, top, left, inset=0.012, thickness=0.012, gap=0.0014,
                 density=0.007, lift=0.0, dome=0.0, fold=None, bevel=0.003, mirror=True, limb_axis=None,
-                limb_forward=(0, -1, 0), limb_lateral=(1, 0, 0), relax=8, material=None, collection=None):
+                limb_forward=(0, -1, 0), limb_lateral=(1, 0, 0), relax=8, fair=0, seam_range=None, seam_sides=None,
+                material=None, collection=None):
     """Lay an armor plate onto `body`, traced in a reference view. bottom/right/top/left are
     polylines of [a, b] points in that view's metres, corner to corner (bottom and top run left
     to right, left and right run bottom to top). Views: front/back (a = world x, b = z),
@@ -236,18 +309,37 @@ def armor_plate(name, body, view, bottom, right, top, left, inset=0.012, thickne
     plate's outer face lands `inset` outside it (so model the suit that far inside the
     reference). gap trims a panel line off each side; lift raises the plate; dome bulges its
     middle; fold = [[a0, b0], [a1, b1], slope] sinks the part right of that line (a facet).
-    limb_axis = centreline points wraps the plate round an arm or leg. mirror adds a clipped
+    limb_axis = centreline points wraps the plate round an arm or leg (theta 0 = limb_forward, +90 =
+    limb_lateral). On a limb, seam_range = [lo, hi] degrees keeps the plate in its share of the limb
+    (front -90..90, back -270..-90) and seam_sides = ["left", "right"] runs those sides exactly
+    along the seams, so a front/back pair meets on one clean side seam with no overlap. view
+    "limb" takes the outline straight in (theta, t) round limb_axis (t 0..1 along it): for parts a
+    single view can't draw, like a strap over a foot or a counter round a heel. fair = Taubin
+    smoothing passes that iron out creases from the body under the plate. mirror adds a clipped
     Mirror (model the +X side)."""
     sides = [[tuple(map(float, p)) for p in s] for s in (bottom, right, top, left)]
     if any(len(s) < 2 for s in sides):
         raise CommandError("Each side needs at least 2 points")
-    if view not in VIEWS:
-        raise CommandError(f"view must be one of {sorted(VIEWS)}")
+    if view not in VIEWS and view != "limb":
+        raise CommandError(f"view must be one of {sorted(VIEWS) + ['limb']}")
+    if view == "limb" and not limb_axis:
+        raise CommandError('view "limb" needs limb_axis')
+    if seam_range is not None and not limb_axis:
+        raise CommandError("seam_range needs limb_axis")
+    if any(sd not in ("left", "right") for sd in seam_sides or ()):
+        raise CommandError('seam_sides takes "left" and/or "right"')
     env = _Envelope(get_mesh(body), float(inset))
     axis = _Axis(limb_axis, limb_forward, limb_lateral) if limb_axis else None
     view_sides = sides
-    if axis is not None:
+    if view == "limb":  # measure the sides in metres on the surface, for the grid density and gap
+        def m_len(sd):
+            pts = [axis.project(env, a, b) for a, b in _densify(sd, 3)]
+            return sum((q - p).length for p, q in zip(pts, pts[1:]))
+        view_sides = [[(0.0, 0.0), (m_len(sd), 0.0)] for sd in sides]
+    elif axis is not None:
         sides = _wrap_outline(env, axis, view, sides)
+        if seam_range is not None:
+            sides = _seam(sides, seam_range, seam_sides or ())
     b_, r_, t_, l_ = sides
     nu = max(3, int(round(max(_length(view_sides[0]), _length(view_sides[2])) / density)))
     nv = max(3, int(round(max(_length(view_sides[3]), _length(view_sides[1])) / density)))
@@ -270,6 +362,8 @@ def armor_plate(name, body, view, bottom, right, top, left, inset=0.012, thickne
         for i in range(1, nv):
             for j in range(1, nu):
                 S[i, j] = env.bvh.find_nearest(Vector(S[i, j] * 0.5 + avg[i, j] * 0.5))[0]
+    if fair:
+        S = _untangle(_fair(_untangle(S), fair))
     bm = bmesh.new()
     grid = []
     for i in range(nv + 1):
@@ -284,7 +378,7 @@ def armor_plate(name, body, view, bottom, right, top, left, inset=0.012, thickne
                 side = (dx * (ab.y - b0) - dy * (ab.x - a0)) / math.hypot(dx, dy)
                 if side < 0:
                     off -= slope * (-side)
-            row.append(bm.verts.new(p + env.normal(idx) * off))
+            row.append(bm.verts.new((Vector(S[i, j]) if fair else p) + env.normal(idx) * off))
         grid.append(row)
     for i in range(nv):
         for j in range(nu):

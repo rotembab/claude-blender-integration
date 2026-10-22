@@ -63,11 +63,59 @@ def test_armor_plate_on_a_limb(call):
         assert min(p.x for p in pts) < 0.05 and max(p.x for p in pts) > 0.15
 
 
+def _theta(obj, cx=0.1, cy=0.0):
+    """Angle round a vertical limb at (cx, cy): 0 = front (-Y), +90 = +X."""
+    import math
+    out = []
+    for v in obj.data.vertices:
+        p = obj.matrix_world @ v.co
+        out.append(math.degrees(math.atan2(p.x - cx, -(p.y - cy))) % 360)
+    return out
+
+
+def test_armor_plate_pair_shares_side_seams(call):
+    ok(call("create_primitive", kind="cylinder", name="Leg", location=[0.1, 0, 0.5], scale=[0.06, 0.06, 0.4],
+            segments=24))
+    axis = [[0.1, 0, 0.9], [0.1, 0, 0.1]]
+    # Outlines that stop short of the silhouette, as traced in each view.
+    for view, rng in (("front", [-90, 90]), ("back", [-270, -90])):
+        ok(call("armor_plate", name=f"Calf_{view}", body="Leg", view=view, inset=0.008, mirror=False, fair=10,
+                limb_axis=axis, seam_range=rng, seam_sides=["left", "right"],
+                bottom=[[0.07, 0.3], [0.13, 0.3]], right=[[0.13, 0.3], [0.13, 0.6]],
+                top=[[0.07, 0.6], [0.13, 0.6]], left=[[0.07, 0.3], [0.07, 0.6]]))
+    front = _theta(bpy.data.objects["Calf_front"])
+    back = _theta(bpy.data.objects["Calf_back"])
+    front = [t if t < 180 else t - 360 for t in front]
+    assert min(front) < -85 and max(front) > 85, "front plate runs out to both side seams"
+    assert min(back) > 90 - 2 and max(back) < 270 + 2, "back plate stays behind the seams"
+    assert min(back) < 95 and max(back) > 265, "back plate reaches both side seams"
+    assert all(len(p.vertices) == 4 for p in bpy.data.objects["Calf_back"].data.polygons)
+
+
+def test_armor_plate_limb_view_wraps_a_heel(call):
+    ok(call("create_primitive", kind="cylinder", name="Heel", location=[0.1, 0, 0.05], scale=[0.05, 0.05, 0.05],
+            segments=24))
+    axis = [[0.1, 0, 0.0], [0.1, 0, 0.1]]
+    ths = [60 + 240 * k / 12 for k in range(13)]
+    ok(call("armor_plate", name="Counter", body="Heel", view="limb", limb_axis=axis, inset=0.002, mirror=False,
+            bottom=[[t, 0.2] for t in ths], right=[[300, 0.2], [300, 0.8]], top=[[t, 0.8] for t in ths],
+            left=[[60, 0.2], [60, 0.8]], thickness=0.004, fair=5))
+    th = _theta(bpy.data.objects["Counter"])
+    assert min(th) > 55 and max(th) < 305 and any(170 < t < 190 for t in th), "wraps round the back only"
+    zs = [(bpy.data.objects["Counter"].matrix_world @ v.co).z for v in bpy.data.objects["Counter"].data.vertices]
+    assert 0.015 < min(zs) and max(zs) < 0.085
+
+
 def test_armor_plate_errors(call):
     _body(call)
     assert "view must be" in err(call("armor_plate", name="P", body="Body", view="diagonal", bottom=[[0, 0], [1, 0]],
                                       right=[[1, 0], [1, 1]], top=[[0, 1], [1, 1]], left=[[0, 0], [0, 1]]))["message"]
     assert "at least 2" in err(call("armor_plate", name="P", body="Body", view="front", bottom=[[0, 0]],
+                                    right=[[1, 0], [1, 1]], top=[[0, 1], [1, 1]], left=[[0, 0], [0, 1]]))["message"]
+    assert "needs limb_axis" in err(call("armor_plate", name="P", body="Body", view="limb", bottom=[[0, 0], [1, 0]],
+                                         right=[[1, 0], [1, 1]], top=[[0, 1], [1, 1]], left=[[0, 0], [0, 1]]))["message"]
+    assert "seam_sides" in err(call("armor_plate", name="P", body="Body", view="front", limb_axis=[[0, 0, 0], [0, 0, 1]],
+                                    seam_range=[-90, 90], seam_sides=["up"], bottom=[[0, 0], [1, 0]],
                                     right=[[1, 0], [1, 1]], top=[[0, 1], [1, 1]], left=[[0, 0], [0, 1]]))["message"]
     assert "No object" in err(call("armor_plate", name="P", body="Nope", view="front", bottom=[[0, 0], [1, 0]],
                                    right=[[1, 0], [1, 1]], top=[[0, 1], [1, 1]], left=[[0, 0], [0, 1]]))["message"]

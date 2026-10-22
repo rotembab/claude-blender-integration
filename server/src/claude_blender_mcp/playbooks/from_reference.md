@@ -66,7 +66,10 @@ Turn each blockout part into the real piece, part by part, comparing each with t
     - zoom `reference_overlay` on the part and read the panel's outline in metres, in the view that faces it (a grid helps: `run_python` can draw one over the picture);
     - pass the outline as four sides; `armor_plate` fills it with an even quad grid, lays it onto the body and adds Solidify, Bevel and Weighted Normal;
     - give plates real thickness (10-16 mm on a human-sized suit) and a 1-2 mm gap, so panel lines read as gaps;
-    - on arms and legs pass `limb_axis` (the limb's centreline), and trace the front and back halves in the front and back views; they wrap round the limb and meet at the sides;
+    - on arms and legs pass `limb_axis` (the limb's centreline), and trace the front and back halves in the front and back views; they wrap round the limb;
+    - a front/back pair must meet on one side seam: add `seam_range` (front `[-90, 90]`, back `[-270, -90]`) and `seam_sides: ["left", "right"]`. Outlines traced in one view stop short of the side, which leaves a strip of under-suit or an overlapping slab there;
+    - add `fair` (10-30) on limb plates. If a plate still shows a crease, check the base body under it for the same crease and fix it there (smooth the base cage), not on the plate;
+    - for parts no single view draws (a strap over the instep, a counter round the heel), use view `"limb"` with an axis along the foot or a vertical axis at the heel, and give the outline straight in (theta, t);
     - use `fold` for facets (the crease under a pectoral plate) and `dome` for bulges.
   - Domed pieces (shoulder pads, kneecaps, joint discs, helmets): `shell_cap`, fitted to the outline in two views.
   - Hands: `build_hand`, one connected all-quad mesh (palm box with the fingers and thumb extruded from it), never separate finger pieces.
