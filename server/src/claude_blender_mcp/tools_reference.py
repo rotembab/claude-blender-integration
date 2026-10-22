@@ -30,11 +30,28 @@ def register(tool, call, dump, image):
         return dump(call("reference_to_world", view=view, points=points))
 
     @tool("reference")
-    def compare_to_reference(view: View = "front", objects: list[str] | None = None, resolution: int = 512) -> list:
+    def compare_to_reference(view: View = "front", objects: list[str] | None = None, resolution: int = 512,
+                             colour_regions: int = 3) -> list:
         """Render the model over exactly the reference picture's area and compare: picture,
         model, and overlay (red = model outside the outline, blue = outline not covered), plus
-        silhouette IoU and the heights where widths differ most. Use after every shape change."""
-        result = call("compare_to_reference", timeout=300, view=view, objects=objects, resolution=resolution)
+        silhouette IoU and the heights where widths differ most. colour_regions > 0 also scores
+        colour_match (share of pixels showing the same colour region as the picture; aim >= 0.95)
+        and adds a panel marking mismatches magenta."""
+        result = call("compare_to_reference", timeout=300, view=view, objects=objects, resolution=resolution,
+                      colour_regions=colour_regions)
+        png = result.pop("png_base64")
+        return [dump(result), image(base64.b64decode(png))]
+
+    @tool("reference")
+    def reference_overlay(view: View = "front", objects: list[str] | None = None,
+                          region: list[float] | None = None, resolution: int = 1024, wireframe: bool = True,
+                          opacity: float = 0.5) -> list:
+        """Check the model against the reference like an artist with a reference plane: the
+        picture, the model (clay with its real wireframe, or studio shading) and the two blended,
+        at exactly the picture's framing. Run it after every modeling step in every view the
+        reference has, and zoom with region=[left, right, bottom, top] in metres."""
+        result = call("reference_overlay", timeout=300, view=view, objects=objects, region=region,
+                      resolution=resolution, wireframe=wireframe, opacity=opacity)
         png = result.pop("png_base64")
         return [dump(result), image(base64.b64decode(png))]
 

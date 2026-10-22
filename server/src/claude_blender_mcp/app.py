@@ -12,7 +12,7 @@ except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import Image
 
 from . import guide, protocol
-from . import tools_build, tools_character, tools_reference
+from . import tools_build, tools_character, tools_hardsurface, tools_reference
 from .connection import BlenderConnection, BlenderError, BlenderUnavailable
 
 INSTRUCTIONS = """\
@@ -35,7 +35,7 @@ Working rules:
 """
 
 ALL_TOOLSETS = ("core", "look", "modeling", "topology", "sculpt", "uv_bake", "materials", "rig", "animate", "export",
-                "reference")
+                "reference", "hardsurface")
 
 mcp = _Server("claude-blender", instructions=INSTRUCTIONS)
 _conn = BlenderConnection(
@@ -194,3 +194,4 @@ def mesh_report(name: str, evaluated: bool = True) -> str:
 tools_build.register(tool, _call, _dump)
 tools_character.register(tool, _call, _dump, lambda data: Image(data=data, format="png"))
 tools_reference.register(tool, _call, _dump, lambda data: Image(data=data, format="png"))
+tools_hardsurface.register(tool, _call, _dump)
