@@ -51,3 +51,21 @@ def register(tool, call, dump):
         return dump(call("rounded_segment", name=name, start=start, end=end, width=width, depth=depth, across=across,
                          taper=taper, stations=stations, mirror=mirror, subdivide=subdivide, material=material,
                          collection=collection))
+
+    @tool("hardsurface")
+    def build_hand(name: str, wrist: Vec3, down: Vec3, across: Vec3, palm_side: Vec3, width: float = 0.074,
+                   depth: float = 0.027, palm_length: float = 0.088, fingers: list[list[float]] | None = None,
+                   thumb: list[float] | None = None, thumb_directions: list[Vec3] | None = None,
+                   curl: list[float] | None = None, gap: float = 0.0016, mirror: bool = True,
+                   material: str | None = None, joint_material: str | None = None,
+                   collection: str | None = None) -> str:
+        """A hand as ONE connected all-quad mesh, box-modeled: palm box, four fingers and a thumb
+        extruded bone by bone with pinched knuckle loops, Subdivision. Never build a hand from
+        separate finger pieces. wrist = palm start; down = towards the fingertips; across = index
+        -> pinky; palm_side = the way the palm faces. fingers = bone lengths per finger (index
+        first); curl = degrees per bone; thumb_directions = one direction per thumb bone, read off
+        the reference's front and side views. Compare with reference_overlay zoomed on the hand."""
+        return dump(call("build_hand", name=name, wrist=wrist, down=down, across=across, palm_side=palm_side,
+                         width=width, depth=depth, palm_length=palm_length, fingers=fingers, thumb=thumb,
+                         thumb_directions=thumb_directions, curl=curl, gap=gap, mirror=mirror, material=material,
+                         joint_material=joint_material, collection=collection))

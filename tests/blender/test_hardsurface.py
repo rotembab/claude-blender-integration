@@ -97,3 +97,37 @@ def test_rounded_segment(call):
     assert 0.955 < min(p.z for p in pts) and max(p.z for p in pts) < 1.005
     assert "same point" in err(call("rounded_segment", name="X", start=[0, 0, 0], end=[0, 0, 0], width=1,
                                     depth=1))["message"]
+
+
+def test_build_hand_is_one_quad_mesh(call):
+    out = ok(call("build_hand", name="Hand.L", wrist=[0.44, 0, 0.96], down=[0, 0, -1], across=[0, 1, 0],
+                  palm_side=[-1, 0, 0], material="Orange", joint_material="Dark"))
+    obj = bpy.data.objects["Hand.L"]
+    me = obj.data
+    assert all(len(p.vertices) == 4 for p in me.polygons)
+    # One connected piece: walk the edges from vertex 0 and reach every vertex.
+    adj = {v.index: set() for v in me.vertices}
+    for e in me.edges:
+        a, b = e.vertices
+        adj[a].add(b)
+        adj[b].add(a)
+    seen, stack = {0}, [0]
+    while stack:
+        for n in adj[stack.pop()] - seen:
+            seen.add(n)
+            stack.append(n)
+    assert len(seen) == len(me.vertices)
+    assert [m.name for m in me.materials] == ["Orange", "Dark"]
+    assert {p.material_index for p in me.polygons} == {0, 1}
+    pts, _ = _evaluated("Hand.L")
+    right = [p for p in pts if p.x > 0]
+    # Fingers reach well past the palm (0.088 m) and the hand hangs below the wrist.
+    assert 0.96 - min(p.z for p in right) > 0.14 and max(p.z for p in right) < 0.975
+    assert out["faces"] == len(me.polygons)
+
+
+def test_build_hand_errors(call):
+    assert "parallel" in err(call("build_hand", name="H", wrist=[0, 0, 1], down=[0, 0, -1], across=[0, 0, 1],
+                                  palm_side=[1, 0, 0]))["message"]
+    assert "4 entries" in err(call("build_hand", name="H", wrist=[0, 0, 1], down=[0, 0, -1], across=[0, 1, 0],
+                                   palm_side=[1, 0, 0], fingers=[[0.03, 0.02, 0.02]]))["message"]

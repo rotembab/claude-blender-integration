@@ -15,7 +15,7 @@ import math
 import bmesh
 import bpy
 import numpy as np
-from mathutils import Vector
+from mathutils import Matrix, Vector
 from mathutils.bvhtree import BVHTree
 
 from . import CommandError, command
@@ -379,3 +379,103 @@ def rounded_segment(name, start, end, width, depth, across=(0, 1, 0), taper=1.0,
         s.levels = s.render_levels = int(subdivide)
     return {"name": obj.name, **mesh_counts(obj)}
 
+
+
+@command("build_hand", "hardsurface")
+def build_hand(name, wrist, down, across, palm_side, width=0.074, depth=0.027, palm_length=0.088,
+               fingers=None, thumb=None, thumb_directions=None, curl=None, gap=0.0016, mirror=True,
+               material=None, joint_material=None, collection=None):
+    """One connected, all-quad hand, box-modeled: a palm box whose knuckle end splits into four
+    finger bases and whose index-side face grows the thumb; each finger is extruded bone by bone
+    with a pinched knuckle loop between bones; Subdivision rounds it. wrist = where the palm
+    starts; down = along the hand towards the fingertips; across = index -> pinky; palm_side =
+    the way the palm faces. fingers = bone lengths per finger, index first; curl = degrees per
+    bone towards the palm; thumb_directions = one direction per thumb bone (default: out past
+    the index side, then down). Defaults fit an adult human-sized hand. material colours the back and the bones, joint_material the palm
+    and knuckle loops."""
+    fingers = fingers or ((0.038, 0.027, 0.022), (0.042, 0.03, 0.024), (0.039, 0.028, 0.022), (0.031, 0.022, 0.019))
+    thumb = thumb or (0.046, 0.04)
+    curl = curl or (6, 14, 20)
+    W = Vector(wrist)
+    d = Vector(down).normalized()
+    wv = Vector(across) - d * Vector(across).dot(d)
+    palm = Vector(palm_side) - d * Vector(palm_side).dot(d)
+    if wv.length < 1e-6 or palm.length < 1e-6:
+        raise CommandError("across and palm_side must not be parallel to down")
+    wv.normalize()
+    palm = (palm - wv * palm.dot(wv)).normalized()
+    if len(fingers) != 4:
+        raise CommandError("fingers needs 4 entries (index, middle, ring, pinky)")
+    t = -palm
+    bm = bmesh.new()
+    hw, hd = width / 2, depth / 2
+    rings = []
+    for f, sc in ((0.0, 0.92), (0.5, 1.0), (1.0, 1.0)):
+        c = W + d * (palm_length * f)
+        back = [bm.verts.new(c + wv * (hw * sc * (i / 2 - 1)) + t * hd) for i in range(5)]
+        front = [bm.verts.new(c + wv * (hw * sc * (i / 2 - 1)) - t * hd) for i in range(5)]
+        rings.append((back, front))
+    dark = set()
+    thumb_face = None
+    for k in range(2):
+        (b0, f0), (b1, f1) = rings[k], rings[k + 1]
+        for i in range(4):
+            bm.faces.new((b0[i], b0[i + 1], b1[i + 1], b1[i]))
+            dark.add(bm.faces.new((f0[i + 1], f0[i], f1[i], f1[i + 1])))
+        side0 = bm.faces.new((f0[0], b0[0], b1[0], f1[0]))
+        side4 = bm.faces.new((b0[4], f0[4], f1[4], b1[4]))
+        if k == 0:
+            thumb_face = side0
+            dark |= {side0, side4}
+    b0, f0 = rings[0]
+    for i in range(4):  # wrist end, closed (a cuff usually covers it)
+        bm.faces.new((b0[i + 1], b0[i], f0[i], f0[i + 1]))
+    b2, f2 = rings[2]
+    tips = [bm.faces.new((b2[i], b2[i + 1], f2[i + 1], f2[i])) for i in range(4)]
+
+    def grow(face, directions, lengths):
+        dark.update(bmesh.ops.inset_individual(bm, faces=[face], thickness=gap, use_even_offset=True)["faces"])
+        cur = face
+        size_w = (cur.verts[0].co - cur.verts[1].co).length
+        size_d = (cur.verts[1].co - cur.verts[2].co).length
+        p = cur.calc_center_median()
+        for direction, L in zip(directions, lengths):
+            for adv, sc, knuckle in ((0.004, 0.8, True), (0.008, 0.98, False), (L - 0.012, 0.92, False)):
+                newf = bmesh.ops.extrude_discrete_faces(bm, faces=[cur])["faces"][0]
+                if knuckle:
+                    dark.update(f for e in newf.edges for f in e.link_faces if f is not newf)
+                p = p + direction * max(adv, 0.001)
+                a = (wv - direction * wv.dot(direction)).normalized()
+                b = direction.cross(a)
+                c0 = newf.calc_center_median()
+                for v in newf.verts:
+                    off = v.co - c0
+                    v.co = (p + a * (size_w / 2 * sc * (1 if off.dot(a) >= 0 else -1))
+                            + b * (size_d / 2 * sc * (1 if off.dot(b) >= 0 else -1)))
+                cur = newf
+
+    for face, lengths in zip(tips, fingers):
+        dirs, dr = [], d
+        for k in range(len(lengths)):
+            dr = (Matrix.Rotation(math.radians(curl[min(k, len(curl) - 1)]), 3, wv) @ dr).normalized()
+            dirs.append(dr)
+        grow(face, dirs, lengths)
+    if thumb_directions:
+        tdirs = [Vector(x).normalized() for x in thumb_directions]
+    else:
+        tdirs = [(d * 0.8 - wv * 0.6).normalized(), (d - wv * 0.12).normalized()]
+    grow(thumb_face, tdirs, thumb)
+    mat, jmat = _material(material), _material(joint_material)
+    for f in bm.faces:
+        f.smooth = True
+        f.material_index = 1 if (f in dark and jmat) else 0
+    obj = _make_object(name, bm, mat, collection)
+    if jmat:
+        if not mat:
+            obj.data.materials.append(_material("Hand", (0.8, 0.8, 0.8)))
+        obj.data.materials.append(jmat)
+    if mirror:
+        obj.modifiers.new("Mirror", "MIRROR")
+    s = obj.modifiers.new("Subdivision", "SUBSURF")
+    s.levels = s.render_levels = 2
+    return {"name": obj.name, **mesh_counts(obj)}

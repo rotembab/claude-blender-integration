@@ -18,7 +18,7 @@ def test_all_tools_registered(monkeypatch):
             "quad_remesh", "decimate", "uv_unwrap", "bake_maps",
             "create_material", "rig_template", "bind_mesh", "pose_test", "procedural_cycle",
             "export_model", "reimport_check", "auto_rig_unirig", "reference_overlay",
-            "armor_plate", "shell_cap", "rounded_segment"} <= names
+            "armor_plate", "shell_cap", "rounded_segment", "build_hand"} <= names
 
 
 def test_toolset_filter(monkeypatch):

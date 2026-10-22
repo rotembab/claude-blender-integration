@@ -69,10 +69,12 @@ Turn each blockout part into the real piece, part by part, comparing each with t
     - on arms and legs pass `limb_axis` (the limb's centreline), and trace the front and back halves in the front and back views; they wrap round the limb and meet at the sides;
     - use `fold` for facets (the crease under a pectoral plate) and `dome` for bulges.
   - Domed pieces (shoulder pads, kneecaps, joint discs, helmets): `shell_cap`, fitted to the outline in two views.
-  - Fingers, palms, wrist cuffs and boots: `rounded_segment` chains, box-modeled and all quads.
+  - Hands: `build_hand`, one connected all-quad mesh (palm box with the fingers and thumb extruded from it), never separate finger pieces.
+  - Wrist cuffs, struts and boot blocks: `rounded_segment`.
+  - Every joint disc mounts on something (a joint block or the suit): nothing floats or clips into a neighbouring piece. Check joints in the side and back views.
   - Model panel lines as insets or cuts, not paint.
 - **Organic forms (muscles, cloth, faces):** sculpt on a dense copy, following `detailed_sculpt`.
-- **Hands:** model fingers with knuckle segments, matching the picture's pose.
+- **Hands:** one connected mesh with knuckle loops (`build_hand`), matching the picture's pose in front and side views.
 - Check at every part:
   - `reference_overlay` in front, side and back, zoomed in on the part, with the wireframe on.
   - `capture_views` close up, plus `iso`, next to the picture.
